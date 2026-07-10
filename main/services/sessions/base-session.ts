@@ -1,0 +1,40 @@
+/**
+ * A live connection to a remote host. Concrete implementations wrap SFTP/SSH
+ * (SshSession) or FTP/FTPS (FtpSession).
+ */
+import type { DirListing, SessionInfo } from "@shared/ipc-contract";
+
+export type ProgressCallback = (transferred: number, total: number) => void;
+
+/** Thrown by a transfer when its AbortSignal fires — surfaced as "canceled". */
+export class TransferCanceledError extends Error {
+  constructor() {
+    super("__transfer_canceled__");
+    this.name = "TransferCanceledError";
+  }
+}
+
+export abstract class BaseSession {
+  abstract readonly info: SessionInfo;
+
+  abstract list(remotePath: string): Promise<DirListing>;
+  abstract mkdir(remotePath: string): Promise<void>;
+  abstract rename(from: string, to: string): Promise<void>;
+  abstract delete(remotePath: string, isDir: boolean): Promise<void>;
+
+  abstract upload(
+    localPath: string,
+    remotePath: string,
+    onProgress: ProgressCallback,
+    signal: AbortSignal,
+  ): Promise<void>;
+
+  abstract download(
+    remotePath: string,
+    localPath: string,
+    onProgress: ProgressCallback,
+    signal: AbortSignal,
+  ): Promise<void>;
+
+  abstract close(): Promise<void>;
+}

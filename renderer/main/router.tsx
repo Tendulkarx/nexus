@@ -8,6 +8,11 @@ import { HomeView } from "./home-view";
 import { RootView } from "./root-view";
 import { QueryClient } from "@tanstack/react-query";
 import { ErrorBoundaryView } from "@glaze/core/components";
+import { lazy } from "react";
+
+const WorkspaceView = lazy(() =>
+  import("@renderer/workspace/workspace-view").then((m) => ({ default: m.WorkspaceView })),
+);
 
 const rootRoute = createRootRouteWithContext<{
   queryClient: QueryClient;
@@ -29,11 +34,20 @@ const homeRoute = createRoute({
   path: "/",
   component: HomeView,
   staticData: {
-    title: "Home",
+    title: "Connection Manager",
   },
 });
 
-const routeTree = rootRoute.addChildren([homeRoute]);
+const workspaceRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/workspace/$sessionId",
+  component: WorkspaceView,
+  staticData: {
+    title: "Workspace",
+  },
+});
+
+const routeTree = rootRoute.addChildren([homeRoute, workspaceRoute]);
 
 const queryClient = new QueryClient();
 
@@ -53,7 +67,7 @@ declare module "@tanstack/react-router" {
   }
   interface StaticDataRouteOption {
     title?: string;
-    component?: any;
+    component?: unknown;
   }
 }
 

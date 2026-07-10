@@ -13,6 +13,9 @@ import { app, BrowserWindow, Menu, logger, initDevToolsButtonState } from "@glaz
 import { registerHandlers } from "./handlers/index.js";
 import { getPreloadPath, getWindowUrl } from "./windows/window-paths.js";
 import { openSettingsWindow } from "./windows/settings-window.js";
+import { sessionManager } from "./services/session-manager.js";
+import { sshTerminalService } from "./services/ssh-terminal-service.js";
+import { transferManager } from "./services/transfer-manager.js";
 
 // Get directory paths
 const __filename = fileURLToPath(import.meta.url);
@@ -53,10 +56,10 @@ async function createMainWindow() {
   // In production: __dirname = build/main, package.json is at ../../package.json
   const packageJsonPath = path.join(__dirname, "..", "..", "package.json");
 
-  const minWindowWidth = 390;
-  const minWindowHeight = 456;
-  const windowWidth = 1000;
-  const windowHeight = 700;
+  const minWindowWidth = 720;
+  const minWindowHeight = 520;
+  const windowWidth = 1200;
+  const windowHeight = 800;
   let windowTitle = "Glaze App";
 
   try {
@@ -192,7 +195,10 @@ app.on("activate", (hasVisibleWindows) => {
 });
 
 app.on("before-quit", () => {
-  logger.info("main", "App before-quit, cleaning up...");
+  logger.info("main", "App before-quit, cleaning up connections...");
+  transferManager.cancelAll();
+  sshTerminalService.closeAll();
+  void sessionManager.closeAll();
 });
 
 // ── App ready ─────────────────────────────────────────────────────────

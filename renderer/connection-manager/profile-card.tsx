@@ -1,0 +1,140 @@
+import {
+  Text,
+  Badge,
+  Button,
+} from "@glaze/core/components";
+import {
+  Loader2Icon,
+  EditIcon,
+  Trash2Icon,
+  PlugIcon,
+  ShieldIcon,
+  KeyIcon,
+  ServerIcon,
+} from "lucide-react";
+import type { ConnectionProfileDTO } from "@shared/ipc-contract";
+import { cn } from "@glaze/core/utils";
+
+type BadgeColor = "blue" | "green" | "purple" | "orange" | "secondary" | "primary" | "red" | "yellow" | "magenta";
+
+interface ProfileCardProps {
+  profile: ConnectionProfileDTO;
+  protocolColor: BadgeColor;
+  connecting: boolean;
+  onConnect: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}
+
+const PROTOCOL_LABELS: Record<string, string> = {
+  sftp: "SFTP",
+  ftp: "FTP",
+  ftps: "FTPS",
+  ssh: "SSH",
+};
+
+const PROTOCOL_BG: Record<string, string> = {
+  sftp: "from-blue-500/20 to-blue-600/5",
+  ftp: "from-green-500/20 to-green-600/5",
+  ftps: "from-purple-500/20 to-purple-600/5",
+  ssh: "from-orange-500/20 to-orange-600/5",
+};
+
+export function ProfileCard({
+  profile,
+  protocolColor,
+  connecting,
+  onConnect,
+  onEdit,
+  onDelete,
+}: ProfileCardProps) {
+  return (
+    <div
+      className={cn(
+        "group relative flex flex-col gap-3 p-4 rounded-card border border-field bg-gradient-to-br",
+        PROTOCOL_BG[profile.protocol] ?? "from-fg/5 to-fg/0",
+        "hover:border-separator transition-colors cursor-default",
+      )}
+    >
+      {/* Protocol badge + host */}
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="shrink-0 size-8 rounded-full bg-control flex items-center justify-center">
+            <ServerIcon className="size-4 text-secondary" />
+          </div>
+          <div className="min-w-0">
+            <Text variant="strong" truncate as="p">{profile.name}</Text>
+            <Text variant="small" color="secondary" truncate as="p">{profile.host}:{profile.port}</Text>
+          </div>
+        </div>
+        <Badge color={protocolColor} size="small" className="shrink-0">
+          {PROTOCOL_LABELS[profile.protocol] ?? profile.protocol.toUpperCase()}
+        </Badge>
+      </div>
+
+      {/* User + auth */}
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <ShieldIcon className="size-3.5 text-tertiary shrink-0" />
+          <Text variant="small" color="secondary" truncate>{profile.username}</Text>
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <KeyIcon className="size-3.5 text-tertiary" />
+          <Text variant="small" color="tertiary">
+            {profile.authType === "key" ? "Key" : "Password"}
+          </Text>
+        </div>
+      </div>
+
+      {/* Tags */}
+      {profile.tags.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {profile.tags.map((tag) => (
+            <Badge key={tag} color="secondary" size="small">{tag}</Badge>
+          ))}
+        </div>
+      )}
+
+      {/* Actions */}
+      <div className="flex items-center gap-2 pt-1">
+        <Button
+          variant="accent"
+          size="small"
+          className="flex-1"
+          onClick={onConnect}
+          disabled={connecting}
+        >
+          {connecting ? (
+            <>
+              <Loader2Icon className="size-3.5 animate-spin" />
+              Connecting...
+            </>
+          ) : (
+            <>
+              <PlugIcon className="size-3.5" />
+              Connect
+            </>
+          )}
+        </Button>
+        <Button
+          variant="transparent"
+          size="small"
+          iconOnly
+          onClick={onEdit}
+          aria-label="Edit"
+        >
+          <EditIcon className="size-3.5 text-secondary" />
+        </Button>
+        <Button
+          variant="transparent"
+          size="small"
+          iconOnly
+          onClick={onDelete}
+          aria-label="Delete"
+        >
+          <Trash2Icon className="size-3.5 text-secondary" />
+        </Button>
+      </div>
+    </div>
+  );
+}

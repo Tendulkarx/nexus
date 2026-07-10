@@ -8,3 +8,24 @@
 @source "./**/*.{ts,tsx}";
 @source not "./preload.ts";
 @source not "./dev/**/*";
+
+/*
+ * Nexus — modern cool indigo/blue theme. Colors derive from these seeds; the
+ * system recomputes every ramp and semantic token. Light seeds are authored
+ * ~2.5x saturated because --bg composites at 40% over the window material.
+ */
+:root {
+  --bg: #cfe0ff;
+  --bg-secondary: #bcd4ff;
+  --fg: #17223b;
+  --theme-accent: #2a6df0;
+  --selection: #2a6df0;
+}
+
+.dark {
+  --bg: #151a2e;
+  --bg-secondary: #0d1120;
+  --fg: #e7ecf7;
+  --theme-accent: #5b9dff;
+  --selection: #5b9dff;
+}

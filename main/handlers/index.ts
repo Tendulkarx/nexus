@@ -8,6 +8,11 @@ import * as path from "path";
 import { fileURLToPath } from "url";
 
 import { appHandlers } from "./app.js";
+import { registerConnectionHandlers } from "./connections.js";
+import { registerFilesystemHandlers } from "./filesystem.js";
+import { registerSessionHandlers } from "./sessions.js";
+import { registerTerminalHandlers } from "./terminal.js";
+import { registerTransferHandlers } from "./transfers.js";
 import { getSettingsWindow, openSettingsWindow } from "../windows/settings-window.js";
 
 import { ipcMain, logger } from "@glaze/core/backend";
@@ -38,12 +43,12 @@ export function registerHandlers(): void {
     getSettingsWindow()?.close();
   });
 
-  logger.info("handlers", "✓ IPC handlers registered");
+  // Nexus feature handlers
+  registerConnectionHandlers();
+  registerSessionHandlers();
+  registerFilesystemHandlers();
+  registerTransferHandlers();
+  registerTerminalHandlers();
 
-  // TODO: Add more handlers here using ipcMain.handle()
-  // Example:
-  // ipcMain.handle('file:read', async (event, path) => {
-  //   const fs = await import('fs/promises');
-  //   return await fs.readFile(path, 'utf-8');
-  // });
+  logger.info("handlers", "✓ IPC handlers registered");
 }

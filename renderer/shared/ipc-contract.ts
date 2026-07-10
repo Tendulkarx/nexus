@@ -1,0 +1,264 @@
+/**
+ * Nexus IPC contract — shared type definitions for the frontend/backend boundary.
+ *
+ * These are TYPE-ONLY declarations imported via `import type { ... } from "@shared/ipc-contract"`
+ * from both `renderer/` and `main/`. They document every channel's request/response shape.
+ *
+ * Channels are grouped below. invoke = ipcMain.handle (request/response via
+ * window.glazeAPI.glaze.ipc.invoke). event↓ = backend→renderer via webContents.send
+ * (subscribe with glaze.ipc.on). event↑ = renderer→backend via glaze.ipc.send (ipcMain.on).
+ */
+
+// ── Domain models ────────────────────────────────────────────────────────
+
+export type Protocol = "sftp" | "ftp" | "ftps" | "ssh";
+export type AuthType = "password" | "key";
+
+/** A saved connection profile, as persisted on disk (backend-only — includes secret). */
+export interface ConnectionProfile {
+  id: string;
+  name: string;
+  protocol: Protocol;
+  host: string;
+  port: number;
+  username: string;
+  authType: AuthType;
+  /** Absolute path to a private key file when authType === "key". */
+  privateKeyPath?: string | null;
+  folderId?: string | null;
+  tags: string[];
+  defaultRemotePath?: string | null;
+  color?: string | null;
+  /** safeStorage-encrypted base64 (password OR key passphrase). NEVER sent to renderer. */
+  secret?: string | null;
+}
+
+/** Renderer-facing profile: secret stripped, replaced by a boolean flag. */
+export type ConnectionProfileDTO = Omit<ConnectionProfile, "secret"> & {
+  hasSecret: boolean;
+};
+
+/** Fields the renderer sends when creating/updating a profile. */
+export type ConnectionInput = Omit<ConnectionProfile, "id" | "secret"> & {
+  /** Plaintext secret to encrypt & store; omit to leave an existing secret unchanged. */
+  secret?: string | null;
+};
+
+export interface Folder {
+  id: string;
+  name: string;
+  parentId?: string | null;
+}
+
+/** A file/directory entry in either the local or remote pane. */
+export interface FsEntry {
+  name: string;
+  path: string;
+  isDir: boolean;
+  size: number;
+  /** epoch ms */
+  mtime: number;
+  /** e.g. "rwxr-xr-x" when known */
+  permissions?: string;
+  /** true when the entry is a symbolic link */
+  symlink?: boolean;
+}
+
+export interface DirListing {
+  path: string;
+  entries: FsEntry[];
+}
+
+export interface LocalRoots {
+  home: string;
+  volumes: FsEntry[];
+}
+
+export type TransferDirection = "upload" | "download";
+export type TransferStatus = "queued" | "active" | "done" | "error" | "canceled";
+
+// ── Connections (invoke) ──────────────────────────────────────────────────
+
+export interface ConnectionsListResult {
+  profiles: ConnectionProfileDTO[];
+  folders: Folder[];
+}
+
+// connections:list                    → ConnectionsListResult
+// connections:get      { id }         → ConnectionProfileDTO | null
+// connections:create   { input }      → ConnectionProfileDTO
+// connections:update   { id, patch }  → ConnectionProfileDTO
+// connections:delete   { id }         → { ok: true }
+// connections:moveToFolder { id, folderId } → ConnectionProfileDTO
+// folders:create       { name, parentId? } → Folder
+// folders:rename       { id, name }   → Folder
+// folders:delete       { id }         → { ok: true }
+
+export interface ConnectionsGetRequest { id: string }
+export interface ConnectionsCreateRequest { input: ConnectionInput }
+export interface ConnectionsUpdateRequest { id: string; patch: Partial<ConnectionInput> }
+export interface ConnectionsDeleteRequest { id: string }
+export interface ConnectionsMoveRequest { id: string; folderId: string | null }
+export interface FoldersCreateRequest { name: string; parentId?: string | null }
+export interface FoldersRenameRequest { id: string; name: string }
+export interface FoldersDeleteRequest { id: string }
+export interface OkResult { ok: true }
+
+// ── Sessions (invoke) ──────────────────────────────────────────────────────
+
+/**
+ * session:connect — connect using either a saved profile (profileId) or an
+ * inline/ad-hoc profile. `secret` supplies a plaintext password/passphrase when
+ * the profile has none stored (e.g. quick-connect or first-time prompt).
+ */
+export interface SessionConnectRequest {
+  profileId?: string;
+  inlineProfile?: ConnectionInput;
+  secret?: string | null;
+}
+
+export interface SessionInfo {
+  sessionId: string;
+  profileId?: string | null;
+  name: string;
+  protocol: Protocol;
+  host: string;
+  username: string;
+  homeDir: string;
+  /** true when this protocol supports an interactive shell (sftp/ssh). */
+  supportsTerminal: boolean;
+}
+
+// session:connect    SessionConnectRequest → SessionInfo
+// session:disconnect { sessionId }         → OkResult
+// session:list                             → SessionInfo[]
+export interface SessionDisconnectRequest { sessionId: string }
+
+// ── Remote FS (invoke — all carry sessionId) ────────────────────────────────
+
+// remote:list   { sessionId, path }              → DirListing
+// remote:mkdir  { sessionId, path }              → OkResult
+// remote:rename { sessionId, from, to }          → OkResult
+// remote:delete { sessionId, path, isDir }       → OkResult
+export interface RemoteListRequest { sessionId: string; path: string }
+export interface RemoteMkdirRequest { sessionId: string; path: string }
+export interface RemoteRenameRequest { sessionId: string; from: string; to: string }
+export interface RemoteDeleteRequest { sessionId: string; path: string; isDir: boolean }
+
+// ── Local FS (invoke) ────────────────────────────────────────────────────────
+
+// local:list   { path? }              → DirListing  (path omitted → home)
+// local:roots                         → LocalRoots
+// local:mkdir  { path }               → OkResult
+// local:rename { from, to }           → OkResult
+// local:delete { path, isDir }        → OkResult
+export interface LocalListRequest { path?: string }
+export interface LocalMkdirRequest { path: string }
+export interface LocalRenameRequest { from: string; to: string }
+export interface LocalDeleteRequest { path: string; isDir: boolean }
+
+// ── Transfers (invoke + events) ──────────────────────────────────────────────
+
+// transfer:upload   { sessionId, localPath, remotePath } → { transferId }
+// transfer:download { sessionId, remotePath, localPath } → { transferId }
+// transfer:cancel   { transferId }                        → OkResult
+export interface TransferUploadRequest { sessionId: string; localPath: string; remotePath: string }
+export interface TransferDownloadRequest { sessionId: string; remotePath: string; localPath: string }
+export interface TransferCancelRequest { transferId: string }
+export interface TransferStartResult { transferId: string }
+
+/** Snapshot of a transfer, mirrored to the renderer via events. */
+export interface TransferItem {
+  transferId: string;
+  sessionId: string;
+  direction: TransferDirection;
+  name: string;
+  localPath: string;
+  remotePath: string;
+  status: TransferStatus;
+  transferred: number;
+  total: number;
+  bytesPerSec: number;
+  error?: string;
+}
+
+// event↓ transfer:progress { transferId, transferred, total, bytesPerSec }
+// event↓ transfer:done     { transferId }
+// event↓ transfer:error    { transferId, message }
+export interface TransferProgressEvent {
+  transferId: string;
+  transferred: number;
+  total: number;
+  bytesPerSec: number;
+}
+export interface TransferDoneEvent { transferId: string }
+export interface TransferErrorEvent { transferId: string; message: string }
+
+// ── Terminal (invoke + events) ────────────────────────────────────────────────
+
+// terminal:open   { sessionId, cols, rows } → { terminalId }
+// terminal:resize { terminalId, cols, rows } → OkResult
+// terminal:close  { terminalId }             → OkResult
+export interface TerminalOpenRequest { sessionId: string; cols: number; rows: number }
+export interface TerminalOpenResult { terminalId: string }
+export interface TerminalResizeRequest { terminalId: string; cols: number; rows: number }
+export interface TerminalCloseRequest { terminalId: string }
+
+// event↑ terminal:input { terminalId, data }
+export interface TerminalInputEvent { terminalId: string; data: string }
+// event↓ terminal:data  { terminalId, chunk }   (chunk is a utf-8 string)
+export interface TerminalDataEvent { terminalId: string; chunk: string }
+// event↓ terminal:exit  { terminalId, code }
+export interface TerminalExitEvent { terminalId: string; code: number | null }
+
+// ── Channel name constants (single source of truth for both layers) ───────────
+
+export const IPC = {
+  connections: {
+    list: "connections:list",
+    get: "connections:get",
+    create: "connections:create",
+    update: "connections:update",
+    delete: "connections:delete",
+    moveToFolder: "connections:moveToFolder",
+  },
+  folders: {
+    create: "folders:create",
+    rename: "folders:rename",
+    delete: "folders:delete",
+  },
+  session: {
+    connect: "session:connect",
+    disconnect: "session:disconnect",
+    list: "session:list",
+  },
+  remote: {
+    list: "remote:list",
+    mkdir: "remote:mkdir",
+    rename: "remote:rename",
+    delete: "remote:delete",
+  },
+  local: {
+    list: "local:list",
+    roots: "local:roots",
+    mkdir: "local:mkdir",
+    rename: "local:rename",
+    delete: "local:delete",
+  },
+  transfer: {
+    upload: "transfer:upload",
+    download: "transfer:download",
+    cancel: "transfer:cancel",
+    progress: "transfer:progress",
+    done: "transfer:done",
+    error: "transfer:error",
+  },
+  terminal: {
+    open: "terminal:open",
+    resize: "terminal:resize",
+    close: "terminal:close",
+    input: "terminal:input",
+    data: "terminal:data",
+    exit: "terminal:exit",
+  },
+} as const;

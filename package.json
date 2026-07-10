@@ -19,6 +19,9 @@
     "@radix-ui/colors": "^3.0.0",
     "@tanstack/react-query": "^5.87.4",
     "@tanstack/react-router": "^1.131.36",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
+    "basic-ftp": "^5.0.5",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
@@ -26,10 +29,13 @@
     "radix-ui": "^1.4.3",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
+    "ssh2": "^1.15.0",
+    "ssh2-sftp-client": "^10.0.3",
     "tailwind-merge": "^3.3.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.22.0",
+    "@types/ssh2": "^1.15.0",
     "@rolldown/plugin-babel": "^0.2.1",
     "@tailwindcss/vite": "^4.2.2",
     "@types/node": "^24.3.1",
@@ -55,11 +61,12 @@
   "packageManager": "npm@11.11.0+sha512-82gRxKrh/eY5UnNorkTFcdBQAGpgjWehkfGVqAGlJjejEtJZGGJUqjo3mbBTNbc5BTnPKGVtGPBZGhElujX5cw==",
   "glaze": {
     "capabilities": {},
-    "sdkVersion": "0.8.0.0",
+    "sdkVersion": "0.9.1.0",
     "createdAt": "2026-07-10T22:12:06.783Z",
     "lastMigration": "cli-js-entry",
     "host": {
-      "minVersion": "0.8.0.0"
-    }
+      "minVersion": "0.9.1.0"
+    },
+    "updatedAt": 1783724774284
   }
 }
