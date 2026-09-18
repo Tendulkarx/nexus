@@ -19,12 +19,18 @@ import {
   ArrowUpIcon,
   ArrowDownIcon,
   LinkIcon,
+  SearchIcon,
+  StarIcon,
 } from "lucide-react";
 import { ipc } from "@renderer/lib/ipc";
-import type { FsEntry } from "@shared/ipc-contract";
+import type { FsEntry, Protocol } from "@shared/ipc-contract";
 import { Breadcrumbs } from "./breadcrumbs";
 import { FilePreview } from "./file-preview";
+import { QuickEditDialog } from "./quick-edit-dialog";
+import { SearchDialog } from "./search-dialog";
 import { cn } from "@renderer/lib/cn";
+
+const SEARCHABLE_PROTOCOLS: Protocol[] = ["sftp", "ssh"];
 
 interface FilePaneProps {
   mode: "local" | "remote";
@@ -33,6 +39,9 @@ interface FilePaneProps {
   onUpload: (localPath: string, name: string) => Promise<void>;
   onDownload: (remotePath: string, name: string) => Promise<void>;
   sessionId: string;
+  protocol: Protocol;
+  /** Connection profile this session was opened from, if any — gates bookmarks/recents (see remote-places-store.ts). */
+  profileId?: string | null;
   onDropFromLocal?: (localPath: string, name: string) => Promise<void>;
   onDropFromRemote?: (remotePath: string, name: string) => Promise<void>;
   onSyncFolder?: (entry: FsEntry) => void;
@@ -72,6 +81,8 @@ export function FilePane({
   onUpload,
   onDownload,
   sessionId,
+  protocol,
+  profileId,
   onDropFromLocal,
   onDropFromRemote,
   onSyncFolder,
@@ -89,6 +100,77 @@ export function FilePane({
   const [selectedPaths, setSelectedPaths] = React.useState<Set<string>>(new Set());
   const [lastClickedIndex, setLastClickedIndex] = React.useState<number | null>(null);
   const [previewEntry, setPreviewEntry] = React.useState<FsEntry | null>(null);
+  const [quickEditEntry, setQuickEditEntry] = React.useState<FsEntry | null>(null);
+  const [showSearch, setShowSearch] = React.useState(false);
+
+  const isRemote = mode === "remote";
+  const searchable = isRemote && SEARCHABLE_PROTOCOLS.includes(protocol);
+  const placesEnabled = isRemote && !!profileId;
+
+  const bookmarksQuery = useQuery({
+    queryKey: ["remotePlaces:bookmarks", profileId],
+    queryFn: () => ipc.remotePlaces.listBookmarks({ profileId: profileId! }),
+    enabled: placesEnabled,
+    staleTime: 5_000,
+  });
+
+  const recentsQuery = useQuery({
+    queryKey: ["remotePlaces:recents", profileId],
+    queryFn: () => ipc.remotePlaces.listRecents({ profileId: profileId! }),
+    enabled: placesEnabled,
+    staleTime: 5_000,
+  });
+
+  // Every remote navigation on a profile-backed session updates its recents list.
+  React.useEffect(() => {
+    if (!placesEnabled) return;
+    void ipc.remotePlaces
+      .recordVisit({ profileId: profileId!, path })
+      .then(() => qc.invalidateQueries({ queryKey: ["remotePlaces:recents", profileId] }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [placesEnabled, profileId, path]);
+
+  async function handlePlacesMenu() {
+    if (!profileId) return;
+    const bookmarks = bookmarksQuery.data?.bookmarks ?? [];
+    const recents = (recentsQuery.data?.recents ?? []).filter((p) => p !== path);
+    const isBookmarked = bookmarks.some((b) => b.path === path);
+
+    const CMD_TOGGLE_BOOKMARK = 1;
+    const CMD_BOOKMARK_BASE = 100;
+    const CMD_RECENT_BASE = 100 + bookmarks.length;
+
+    const items: Array<{ label?: string; commandId?: number; type?: "separator" }> = [
+      { label: isBookmarked ? "Remove Bookmark" : "Bookmark This Folder", commandId: CMD_TOGGLE_BOOKMARK },
+    ];
+    if (bookmarks.length > 0) {
+      items.push({ type: "separator" });
+      bookmarks.forEach((b, i) => items.push({ label: `★ ${b.path}`, commandId: CMD_BOOKMARK_BASE + i }));
+    }
+    if (recents.length > 0) {
+      items.push({ type: "separator" });
+      recents.slice(0, 10).forEach((p, i) => items.push({ label: p, commandId: CMD_RECENT_BASE + i }));
+    }
+
+    const result = await window.nexusAPI.Menu.popup({ items });
+    if (result.commandId === null) return;
+
+    if (result.commandId === CMD_TOGGLE_BOOKMARK) {
+      const mutate = isBookmarked
+        ? ipc.remotePlaces.removeBookmark({ profileId, path })
+        : ipc.remotePlaces.addBookmark({ profileId, path });
+      await mutate;
+      void qc.invalidateQueries({ queryKey: ["remotePlaces:bookmarks", profileId] });
+      return;
+    }
+    if (result.commandId >= CMD_BOOKMARK_BASE && result.commandId < CMD_RECENT_BASE) {
+      const target = bookmarks[result.commandId - CMD_BOOKMARK_BASE];
+      if (target) onNavigate(target.path);
+      return;
+    }
+    const target = recents[result.commandId - CMD_RECENT_BASE];
+    if (target) onNavigate(target);
+  }
 
   // Sync path input with prop
   React.useEffect(() => {
@@ -234,8 +316,6 @@ export function FilePane({
     const activeSelection = selectedPaths.has(entry.path) ? selectedPaths : new Set([entry.path]);
     const multiCount = activeSelection.size;
 
-    const isRemote = mode === "remote";
-
     const CMD_PREVIEW = 1;
     const CMD_EDIT = 2;
     const CMD_TRANSFER = 3;
@@ -246,6 +326,7 @@ export function FilePane({
     const CMD_BULK_TRANSFER = 8;
     const CMD_BULK_DELETE = 9;
     const CMD_SYNC = 10;
+    const CMD_QUICK_EDIT = 11;
 
     const items: Array<{ label?: string; commandId?: number; type?: "separator" }> = [];
 
@@ -260,7 +341,10 @@ export function FilePane({
         }
       } else {
         items.push({ label: "Quick Look", commandId: CMD_PREVIEW });
-        if (isRemote) items.push({ label: "Edit in Default App", commandId: CMD_EDIT });
+        if (isRemote) {
+          items.push({ label: "Quick Edit", commandId: CMD_QUICK_EDIT });
+          items.push({ label: "Edit in Default App", commandId: CMD_EDIT });
+        }
         items.push({ type: "separator" });
         items.push({ label: isRemote ? "Download" : "Upload", commandId: CMD_TRANSFER });
       }
@@ -282,6 +366,9 @@ export function FilePane({
         break;
       case CMD_EDIT:
         void handleEditExternal(entry);
+        break;
+      case CMD_QUICK_EDIT:
+        setQuickEditEntry(entry);
         break;
       case CMD_TRANSFER:
         if (isRemote) void onDownload(entry.path, entry.name);
@@ -417,6 +504,33 @@ export function FilePane({
           />
         </div>
         <div className="flex items-center gap-1 shrink-0">
+          {placesEnabled && (
+            <Button
+              variant="transparent"
+              size="small"
+              iconOnly
+              onClick={() => void handlePlacesMenu()}
+              aria-label="Bookmarks and recent locations"
+            >
+              <StarIcon
+                className={cn(
+                  "size-3.5",
+                  bookmarksQuery.data?.bookmarks.some((b) => b.path === path) ? "text-support-yellow" : "text-secondary",
+                )}
+              />
+            </Button>
+          )}
+          {searchable && (
+            <Button
+              variant="transparent"
+              size="small"
+              iconOnly
+              onClick={() => setShowSearch(true)}
+              aria-label="Search this folder"
+            >
+              <SearchIcon className="size-3.5 text-secondary" />
+            </Button>
+          )}
           <Button
             variant="transparent"
             size="small"
@@ -552,6 +666,30 @@ export function FilePane({
           sessionId={sessionId}
           entry={previewEntry}
           onClose={() => setPreviewEntry(null)}
+        />
+      )}
+
+      {/* Quick edit (in-app editor for small remote text files) */}
+      {quickEditEntry && (
+        <QuickEditDialog
+          sessionId={sessionId}
+          entry={quickEditEntry}
+          onClose={() => setQuickEditEntry(null)}
+          onEditExternal={() => {
+            const entry = quickEditEntry;
+            setQuickEditEntry(null);
+            void handleEditExternal(entry);
+          }}
+        />
+      )}
+
+      {/* Remote content search */}
+      {showSearch && (
+        <SearchDialog
+          sessionId={sessionId}
+          rootPath={path}
+          onClose={() => setShowSearch(false)}
+          onNavigate={onNavigate}
         />
       )}
 

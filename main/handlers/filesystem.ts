@@ -6,15 +6,17 @@ import { ipcMain } from "electron";
 import { asRecord, optString, reqBool, reqString } from "./validate.js";
 import { localFsService } from "../services/local-fs.js";
 import { sessionManager } from "../services/session-manager.js";
+import { isBinaryContent } from "../services/text-utils.js";
 
 import { IPC } from "../../renderer/shared/ipc-contract.js";
 import type { ReadFileResult } from "@shared/ipc-contract";
 
-const PREVIEW_MAX_BYTES = 256 * 1024;
+/** Also the size cutoff for the in-app quick editor — see edit-manager.ts's quickSave. */
+export const PREVIEW_MAX_BYTES = 256 * 1024;
 
 /** Converts a raw buffer into a text-preview result, detecting binary content. */
 function toReadResult(buffer: Buffer): ReadFileResult {
-  const isBinary = buffer.includes(0); // NUL byte ⇒ treat as binary
+  const isBinary = isBinaryContent(buffer);
   return {
     text: isBinary ? "" : buffer.toString("utf-8"),
     size: buffer.length,
