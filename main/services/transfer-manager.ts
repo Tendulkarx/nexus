@@ -22,6 +22,7 @@ const PROGRESS_INTERVAL_MS = 100;
 
 export class TransferManager {
   private controllers = new Map<string, AbortController>();
+  private active = new Map<string, { transferred: number; total: number }>();
 
   start(
     direction: TransferDirection,
@@ -49,9 +50,19 @@ export class TransferManager {
     const transferId = randomUUID();
     const controller = new AbortController();
     this.controllers.set(transferId, controller);
+    this.active.set(transferId, { transferred: 0, total: 0 });
 
     const done = this.run(transferId, direction, sessionId, localPath, remotePath, controller.signal);
     return { transferId, done };
+  }
+
+  /** Aggregate progress across every in-flight transfer, for the Dock badge/progress bar. */
+  getActiveSummary(): { count: number; progress: number } {
+    const entries = Array.from(this.active.values());
+    if (entries.length === 0) return { count: 0, progress: 0 };
+    const transferred = entries.reduce((sum, e) => sum + e.transferred, 0);
+    const total = entries.reduce((sum, e) => sum + e.total, 0);
+    return { count: entries.length, progress: total > 0 ? transferred / total : 0 };
   }
 
   private async run(
@@ -68,6 +79,7 @@ export class TransferManager {
     let lastTime = Date.now();
 
     const onProgress = (transferred: number, total: number) => {
+      this.active.set(transferId, { transferred, total });
       const now = Date.now();
       if (now - lastEmit < PROGRESS_INTERVAL_MS) return;
       const elapsed = (now - lastTime) / 1000;
@@ -103,6 +115,7 @@ export class TransferManager {
       return { ok: false, message };
     } finally {
       this.controllers.delete(transferId);
+      this.active.delete(transferId);
     }
   }
 
@@ -113,6 +126,7 @@ export class TransferManager {
   cancelAll(): void {
     for (const controller of this.controllers.values()) controller.abort();
     this.controllers.clear();
+    this.active.clear();
   }
 }
 

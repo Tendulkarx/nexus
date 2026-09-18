@@ -30,6 +30,8 @@ export interface ConnectionProfile {
   tags: string[];
   defaultRemotePath?: string | null;
   color?: string | null;
+  /** epoch ms of the last successful session:connect against this profile; null/undefined if never connected. */
+  lastConnectedAt?: number | null;
   /** safeStorage-encrypted base64 (password OR key passphrase). NEVER sent to renderer. */
   secret?: string | null;
 }
@@ -104,6 +106,14 @@ export interface FoldersCreateRequest { name: string; parentId?: string | null }
 export interface FoldersRenameRequest { id: string; name: string }
 export interface FoldersDeleteRequest { id: string }
 export interface OkResult { ok: true }
+
+/**
+ * connections:checkReachability — a plain TCP connect to host:port with a
+ * short timeout, used to show a per-profile health dot. Never sends
+ * credentials or performs a protocol handshake.
+ */
+export interface ConnectionsCheckReachabilityRequest { host: string; port: number }
+export interface ConnectionsCheckReachabilityResult { reachable: boolean }
 
 // ── Sessions (invoke) ──────────────────────────────────────────────────────
 
@@ -348,6 +358,7 @@ export const IPC = {
     update: "connections:update",
     delete: "connections:delete",
     moveToFolder: "connections:moveToFolder",
+    checkReachability: "connections:checkReachability",
   },
   folders: {
     create: "folders:create",

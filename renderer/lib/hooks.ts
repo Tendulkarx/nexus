@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 /**
  * Keeps the `.dark` class on <html> in sync with the OS/theme-source
@@ -15,4 +15,30 @@ export function useTheme(): void {
     media.addEventListener("change", apply);
     return () => media.removeEventListener("change", apply);
   }, []);
+}
+
+/**
+ * A useState that persists to localStorage under `key`, read once on mount.
+ * Storage failures (disabled/private-mode) fall back to in-memory state only.
+ */
+export function usePersistedState<T>(key: string, initial: T): [T, (value: T) => void] {
+  const [value, setValue] = useState<T>(() => {
+    try {
+      const stored = localStorage.getItem(key);
+      return stored !== null ? (JSON.parse(stored) as T) : initial;
+    } catch {
+      return initial;
+    }
+  });
+
+  function setPersisted(next: T): void {
+    setValue(next);
+    try {
+      localStorage.setItem(key, JSON.stringify(next));
+    } catch {
+      // Storage unavailable — value still holds for this session.
+    }
+  }
+
+  return [value, setPersisted];
 }

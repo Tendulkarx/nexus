@@ -20,16 +20,22 @@ import {
   ServerIcon,
   FolderPlusIcon,
   Loader2Icon,
+  LayoutGridIcon,
+  ListIcon,
 } from "lucide-react";
 import { ipc } from "@renderer/lib/ipc";
 import { setSession } from "@renderer/lib/sessions";
 import { addOpenSession } from "@renderer/lib/open-sessions-store";
 import { NEW_CONNECTION_EVENT, NEW_FOLDER_EVENT } from "@renderer/lib/menu-events";
+import { usePersistedState } from "@renderer/lib/hooks";
 import type { ConnectionProfileDTO, Folder, Protocol } from "@shared/ipc-contract";
 import { ConnectionForm } from "./connection-form";
 import { QuickConnectBar } from "./quick-connect-bar";
 import { ProfileCard } from "./profile-card";
+import { ProfileRow } from "./profile-row";
 import { toast } from "@renderer/lib/ui";
+
+type ViewMode = "grid" | "list";
 
 type BadgeColor = "blue" | "green" | "purple" | "orange" | "secondary" | "primary" | "red" | "yellow" | "magenta";
 
@@ -59,6 +65,7 @@ export function ConnectionManagerView() {
   const [deleteTarget, setDeleteTarget] = React.useState<ConnectionProfileDTO | null>(null);
   const [connectingId, setConnectingId] = React.useState<string | null>(null);
   const [passwordPrompt, setPasswordPrompt] = React.useState<{ profile: ConnectionProfileDTO; password: string } | null>(null);
+  const [viewMode, setViewMode] = usePersistedState<ViewMode>("connection-manager:view-mode", "grid");
 
   const connectionsQuery = useQuery({
     queryKey: ["connections"],
@@ -218,11 +225,36 @@ export function ConnectionManagerView() {
             addOpenSession(sessionInfo.sessionId);
           }} />
 
-          <ScrollArea className="flex-1" title={
-            selectedSidebarItem.kind === "all"
-              ? "All Connections"
-              : selectedSidebarItem.folder.name
-          }>
+          <ScrollArea
+            className="flex-1"
+            title={
+              selectedSidebarItem.kind === "all"
+                ? "All Connections"
+                : selectedSidebarItem.folder.name
+            }
+            toolbar={
+              <div className="flex items-center justify-end gap-1 px-3 py-1.5 border-b border-separator">
+                <Button
+                  iconOnly
+                  variant={viewMode === "grid" ? "filled" : "transparent"}
+                  size="small"
+                  onClick={() => setViewMode("grid")}
+                  aria-label="Grid view"
+                >
+                  <LayoutGridIcon className="size-3.5" />
+                </Button>
+                <Button
+                  iconOnly
+                  variant={viewMode === "list" ? "filled" : "transparent"}
+                  size="small"
+                  onClick={() => setViewMode("list")}
+                  aria-label="List view"
+                >
+                  <ListIcon className="size-3.5" />
+                </Button>
+              </div>
+            }
+          >
             {connectionsQuery.isPending ? (
               <div className="flex items-center justify-center h-32">
                 <Loader2Icon className="size-5 animate-spin text-tertiary" />
@@ -247,10 +279,24 @@ export function ConnectionManagerView() {
                   ) : undefined
                 }
               />
-            ) : (
+            ) : viewMode === "grid" ? (
               <div className="p-4 grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3">
                 {filteredProfiles.map((profile) => (
                   <ProfileCard
+                    key={profile.id}
+                    profile={profile}
+                    protocolColor={getProtocolColor(profile.protocol)}
+                    connecting={connectingId === profile.id}
+                    onConnect={() => handleConnect(profile)}
+                    onEdit={() => setEditProfile(profile)}
+                    onDelete={() => setDeleteTarget(profile)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col">
+                {filteredProfiles.map((profile) => (
+                  <ProfileRow
                     key={profile.id}
                     profile={profile}
                     protocolColor={getProtocolColor(profile.protocol)}

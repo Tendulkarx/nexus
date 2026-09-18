@@ -361,6 +361,16 @@ export function FilePane({
     } else {
       e.dataTransfer.setData("application/nexus-remote-path", entry.path);
       e.dataTransfer.setData("application/nexus-file-name", entry.name);
+      // Lets Chromium drag this file straight out to Finder (or any other app):
+      // it fetches nexus-drag://<sessionId>/<path> only once the OS drop target
+      // actually accepts it, in parallel with (not instead of) the in-app drag
+      // data above, so dropping onto the local pane is unaffected.
+      if (!entry.isDir) {
+        e.dataTransfer.setData(
+          "DownloadURL",
+          `application/octet-stream:${entry.name}:nexus-drag://${sessionId}/${encodeURIComponent(entry.path)}`,
+        );
+      }
     }
   }
 

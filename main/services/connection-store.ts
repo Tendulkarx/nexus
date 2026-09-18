@@ -71,6 +71,7 @@ export class ConnectionStore {
       tags: input.tags ?? [],
       defaultRemotePath: input.defaultRemotePath ?? null,
       color: input.color ?? null,
+      lastConnectedAt: null,
       secret: input.secret ? await credentialVault.encrypt(input.secret) : null,
     };
     data.profiles.push(profile);
@@ -111,6 +112,15 @@ export class ConnectionStore {
 
   async moveToFolder(id: string, folderId: string | null): Promise<ConnectionProfileDTO> {
     return this.update(id, { folderId });
+  }
+
+  /** Backend-only: records a successful session:connect. Not part of ConnectionInput — never user-editable. */
+  async recordConnected(id: string): Promise<void> {
+    const data = await this.data();
+    const profile = data.profiles.find((p) => p.id === id);
+    if (!profile) return;
+    profile.lastConnectedAt = Date.now();
+    await this.store.save(data);
   }
 
   async createFolder(name: string, parentId: string | null = null): Promise<Folder> {
