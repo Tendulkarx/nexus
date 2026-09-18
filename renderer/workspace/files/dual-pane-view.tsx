@@ -87,6 +87,7 @@ export function DualPaneView({ session, transferState }: DualPaneViewProps) {
             onUpload={handleUpload}
             onDownload={handleDownload}
             sessionId={session.sessionId}
+            protocol={session.protocol}
             onDropFromRemote={handleDownload}
             onSyncFolder={handleSyncFromLocal}
           />
@@ -99,6 +100,8 @@ export function DualPaneView({ session, transferState }: DualPaneViewProps) {
             onUpload={handleUpload}
             onDownload={handleDownload}
             sessionId={session.sessionId}
+            protocol={session.protocol}
+            profileId={session.profileId}
             onDropFromLocal={handleUpload}
             onSyncFolder={handleSyncFromRemote}
           />

@@ -318,6 +318,42 @@ export class SshSession extends BaseSession {
     }
   }
 
+  /**
+   * Runs a single non-interactive command over the existing SSH connection
+   * (e.g. remote search's `grep -r`) and collects its output. Does not throw
+   * on a non-zero exit code — callers decide what that means for their command.
+   */
+  exec(command: string, timeoutMs = 20_000): Promise<{ stdout: string; stderr: string; code: number | null }> {
+    return new Promise((resolve, reject) => {
+      this.sftp.client.exec(command, (err, stream) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        let stdout = "";
+        let stderr = "";
+        const timer = setTimeout(() => {
+          stream.destroy();
+          reject(new Error("Command timed out"));
+        }, timeoutMs);
+        stream.on("data", (chunk: Buffer) => {
+          stdout += chunk.toString("utf-8");
+        });
+        stream.stderr.on("data", (chunk: Buffer) => {
+          stderr += chunk.toString("utf-8");
+        });
+        stream.on("error", (streamErr: Error) => {
+          clearTimeout(timer);
+          reject(streamErr);
+        });
+        stream.on("close", (code: number | null) => {
+          clearTimeout(timer);
+          resolve({ stdout, stderr, code });
+        });
+      });
+    });
+  }
+
   /** Opens an interactive shell channel over the existing SSH connection. */
   openShell(cols: number, rows: number): Promise<ClientChannel> {
     return new Promise((resolve, reject) => {

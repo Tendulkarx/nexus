@@ -37,3 +37,17 @@ export function reqBool(obj: Record<string, unknown>, key: string, context: stri
   }
   return value;
 }
+
+export function optNumber(obj: Record<string, unknown>, key: string): number | undefined {
+  const value = obj[key];
+  return typeof value === "number" && !Number.isNaN(value) ? value : undefined;
+}
+
+/** Like reqString, but accepts an empty string (e.g. saving an emptied-out file). */
+export function reqAnyString(obj: Record<string, unknown>, key: string, context: string): string {
+  const value = obj[key];
+  if (typeof value !== "string") {
+    throw new Error(`${context}: missing required string "${key}"`);
+  }
+  return value;
+}

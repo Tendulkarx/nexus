@@ -3,7 +3,7 @@
  * opens it in the OS default editor, watches the temp file, and re-uploads to
  * the server on each save. Emits edit:saved / edit:error events.
  */
-import { createHash } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import * as fs from "fs";
 import * as fsp from "fs/promises";
 import * as os from "os";
@@ -57,6 +57,26 @@ export class EditManager {
     const err = await shell.openPath(tempPath);
     if (err) throw new Error(`Couldn't open the file in an editor: ${err}`);
     logger.info("edit-manager", "Editing remote file", { sessionId, remotePath, tempPath });
+  }
+
+  /**
+   * Save path for the in-app quick editor: writes `content` to a scratch
+   * temp file and uploads it via the session's existing putFile, same as the
+   * external-editor round trip's re-upload but without a download or watcher.
+   */
+  async quickSave(sessionId: string, remotePath: string, content: string): Promise<void> {
+    const session = sessionManager.get(sessionId);
+    const dir = path.join(os.tmpdir(), "nexus-quick-edit");
+    await fsp.mkdir(dir, { recursive: true });
+    const name = path.posix.basename(remotePath) || "file";
+    const tempPath = path.join(dir, `${randomUUID()}-${name}`);
+    await fsp.writeFile(tempPath, content, "utf-8");
+    try {
+      await session.putFile(tempPath, remotePath);
+      logger.info("edit-manager", "Quick-saved remote file", { sessionId, remotePath });
+    } finally {
+      await fsp.rm(tempPath, { force: true });
+    }
   }
 
   private ensureWatcher(dir: string): void {

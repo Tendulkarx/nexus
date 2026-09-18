@@ -27,6 +27,8 @@ import {
   type RemoteRenameRequest,
   type RemoteDeleteRequest,
   type RemoteReadFileRequest,
+  type RemoteSearchRequest,
+  type RemoteSearchResult,
   type LocalListRequest,
   type LocalMkdirRequest,
   type LocalRenameRequest,
@@ -38,6 +40,13 @@ import {
   type EditOpenRequest,
   type EditSavedEvent,
   type EditErrorEvent,
+  type EditQuickSaveRequest,
+  type RemotePlacesListRequest,
+  type RemotePlacesAddBookmarkRequest,
+  type RemotePlacesRemoveBookmarkRequest,
+  type RemotePlacesRecordVisitRequest,
+  type RemotePlacesBookmarksResult,
+  type RemotePlacesRecentsResult,
   type TransferUploadRequest,
   type TransferDownloadRequest,
   type TransferCancelRequest,
@@ -138,6 +147,8 @@ export const ipc = {
       invoke<OkResult>(IPC.remote.delete, req),
     readFile: (req: RemoteReadFileRequest) =>
       invoke<ReadFileResult>(IPC.remote.readFile, req),
+    search: (req: RemoteSearchRequest) =>
+      invoke<RemoteSearchResult>(IPC.remote.search, req),
   },
 
   // Local FS
@@ -158,10 +169,25 @@ export const ipc = {
   // Remote edit round-trip
   edit: {
     open: (req: EditOpenRequest) => invoke<OkResult>(IPC.edit.open, req),
+    quickSave: (req: EditQuickSaveRequest) => invoke<OkResult>(IPC.edit.quickSave, req),
     onSaved: (handler: (payload: EditSavedEvent) => void) =>
       on<EditSavedEvent>(IPC.edit.saved, handler),
     onError: (handler: (payload: EditErrorEvent) => void) =>
       on<EditErrorEvent>(IPC.edit.error, handler),
+  },
+
+  // Remote places: bookmarks + recent locations (per connection profile)
+  remotePlaces: {
+    listBookmarks: (req: RemotePlacesListRequest) =>
+      invoke<RemotePlacesBookmarksResult>(IPC.remotePlaces.listBookmarks, req),
+    addBookmark: (req: RemotePlacesAddBookmarkRequest) =>
+      invoke<RemotePlacesBookmarksResult>(IPC.remotePlaces.addBookmark, req),
+    removeBookmark: (req: RemotePlacesRemoveBookmarkRequest) =>
+      invoke<RemotePlacesBookmarksResult>(IPC.remotePlaces.removeBookmark, req),
+    listRecents: (req: RemotePlacesListRequest) =>
+      invoke<RemotePlacesRecentsResult>(IPC.remotePlaces.listRecents, req),
+    recordVisit: (req: RemotePlacesRecordVisitRequest) =>
+      invoke<OkResult>(IPC.remotePlaces.recordVisit, req),
   },
 
   // Transfers

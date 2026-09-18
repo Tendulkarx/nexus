@@ -8,6 +8,8 @@ import { registerDisplayHandlers } from "./display.js";
 import { registerEditHandlers } from "./edit.js";
 import { registerFilesystemHandlers } from "./filesystem.js";
 import { registerPortForwardHandlers } from "./port-forwards.js";
+import { registerRemotePlacesHandlers } from "./remote-places.js";
+import { registerSearchHandlers } from "./search.js";
 import { registerSessionHandlers } from "./sessions.js";
 import { registerSnippetHandlers } from "./snippets.js";
 import { registerSshConfigHandlers } from "./ssh-config.js";
@@ -48,6 +50,8 @@ export function registerHandlers(): void {
   registerPortForwardHandlers();
   registerSshConfigHandlers();
   registerSnippetHandlers();
+  registerSearchHandlers();
+  registerRemotePlacesHandlers();
 
   logger.info("handlers", "✓ IPC handlers registered");
 }

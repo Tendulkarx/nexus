@@ -259,6 +259,65 @@ export interface EditSavedEvent { path: string; name: string }
 // event↓ edit:error { path, message }
 export interface EditErrorEvent { path: string; message: string }
 
+// edit:quickSave { sessionId, path, content } → OkResult
+//   Writes `content` to a temp file and uploads it via the session's putFile —
+//   the save path for the in-app quick editor (small text files only; see
+//   ReadFileResult.isBinary / .truncated, used to gate the quick editor UI).
+export interface EditQuickSaveRequest { sessionId: string; path: string; content: string }
+
+// ── Remote search / grep (invoke — sftp/ssh sessions only) ─────────────────
+//
+// FTP/FTPS sessions have no remote exec capability, so remote:search only
+// works against sftp/ssh sessions (sessionManager.getSsh throws otherwise) —
+// the renderer hides the search UI for ftp/ftps sessions rather than calling it.
+
+export interface SearchMatch {
+  /** Absolute remote path of the matching file. */
+  path: string;
+  /** 1-based line number within that file. */
+  line: number;
+  /** The matching line's text, trimmed and length-capped. */
+  snippet: string;
+}
+
+// remote:search { sessionId, path, query, maxResults? } → RemoteSearchResult
+export interface RemoteSearchRequest {
+  sessionId: string;
+  path: string;
+  query: string;
+  maxResults?: number;
+}
+export interface RemoteSearchResult {
+  matches: SearchMatch[];
+  /** true when more matches existed than `matches` — narrow the query for a complete picture. */
+  truncated: boolean;
+}
+
+// ── Remote places: bookmarks + recent locations (invoke) ───────────────────
+//
+// Keyed by connection profile id — ad-hoc (profile-less) sessions have no
+// stable identity to persist against, so the renderer only offers these for
+// sessions opened from a saved profile (SessionInfo.profileId set).
+
+export interface RemotePlace {
+  path: string;
+  label?: string | null;
+  /** epoch ms */
+  addedAt: number;
+}
+
+// remotePlaces:listBookmarks { profileId }              → RemotePlacesBookmarksResult
+// remotePlaces:addBookmark    { profileId, path, label? } → RemotePlacesBookmarksResult
+// remotePlaces:removeBookmark { profileId, path }        → RemotePlacesBookmarksResult
+// remotePlaces:listRecents    { profileId }              → RemotePlacesRecentsResult
+// remotePlaces:recordVisit    { profileId, path }        → OkResult
+export interface RemotePlacesListRequest { profileId: string }
+export interface RemotePlacesAddBookmarkRequest { profileId: string; path: string; label?: string }
+export interface RemotePlacesRemoveBookmarkRequest { profileId: string; path: string }
+export interface RemotePlacesRecordVisitRequest { profileId: string; path: string }
+export interface RemotePlacesBookmarksResult { bookmarks: RemotePlace[] }
+export interface RemotePlacesRecentsResult { recents: string[] }
+
 // ── Transfers (invoke + events) ──────────────────────────────────────────────
 
 // transfer:upload   { sessionId, localPath, remotePath } → { transferId }
@@ -499,6 +558,7 @@ export const IPC = {
     rename: "remote:rename",
     delete: "remote:delete",
     readFile: "remote:readFile",
+    search: "remote:search",
   },
   local: {
     list: "local:list",
@@ -512,6 +572,14 @@ export const IPC = {
     open: "edit:open",
     saved: "edit:saved",
     error: "edit:error",
+    quickSave: "edit:quickSave",
+  },
+  remotePlaces: {
+    listBookmarks: "remotePlaces:listBookmarks",
+    addBookmark: "remotePlaces:addBookmark",
+    removeBookmark: "remotePlaces:removeBookmark",
+    listRecents: "remotePlaces:listRecents",
+    recordVisit: "remotePlaces:recordVisit",
   },
   transfer: {
     upload: "transfer:upload",
