@@ -6,15 +6,22 @@ import * as fsp from "fs/promises";
 import * as posix from "path/posix";
 
 import { dialog } from "electron";
+import { Client } from "ssh2";
 import SftpClient from "ssh2-sftp-client";
 
 import { BaseSession, TransferCanceledError, type ProgressCallback } from "./base-session.js";
 import { fingerprintKey, knownHostsStore } from "../known-hosts-store.js";
 import { logger } from "../../logger.js";
 
-import type { ConnectionProfile } from "@shared/ipc-contract";
+import type { ConnectionProfile, JumpHost } from "@shared/ipc-contract";
 import type { DirListing, FsEntry, SessionInfo } from "@shared/ipc-contract";
-import type { ClientChannel, ConnectConfig } from "ssh2";
+import type {
+  AcceptConnection,
+  ClientChannel,
+  ConnectConfig,
+  RejectConnection,
+  TcpConnectionDetails,
+} from "ssh2";
 
 /**
  * Trust-on-first-use host key verification. First connection to a host:port
@@ -59,20 +66,86 @@ async function verifyHostKey(host: string, port: number, key: Buffer): Promise<b
   return false;
 }
 
+/**
+ * Connects to a jump/bastion host as a plain ssh2 Client (no SFTP needed
+ * there), then opens a direct-tcpip channel through it to the real target.
+ * That channel is handed to the target's own connection as `sock`, so the
+ * target's SSH handshake tunnels entirely inside the jump host's
+ * already-authenticated connection instead of a second real TCP connection.
+ */
+async function connectViaJumpHost(
+  jump: JumpHost,
+  jumpSecret: string | null,
+  targetHost: string,
+  targetPort: number,
+): Promise<{ client: Client; sock: ClientChannel }> {
+  const jumpHostAddr = jump.host;
+  const jumpPort = jump.port || 22;
+  const config: ConnectConfig = {
+    host: jumpHostAddr,
+    port: jumpPort,
+    username: jump.username,
+    readyTimeout: 20_000,
+    keepaliveInterval: 15_000,
+    hostVerifier: (key: Buffer, verify: (ok: boolean) => void) => {
+      verifyHostKey(jumpHostAddr, jumpPort, key)
+        .then(verify)
+        .catch((err) => {
+          logger.error("ssh", "Jump host key verification failed", err);
+          verify(false);
+        });
+    },
+  };
+
+  if (jump.authType === "key") {
+    if (!jump.privateKeyPath) {
+      throw new Error("Jump host key authentication selected but no private key file was provided");
+    }
+    config.privateKey = await fsp.readFile(jump.privateKeyPath);
+    if (jumpSecret) config.passphrase = jumpSecret;
+  } else {
+    if (!jumpSecret) throw new Error("No password provided for the jump host connection");
+    config.password = jumpSecret;
+  }
+
+  const client = new Client();
+  await new Promise<void>((resolve, reject) => {
+    client.once("ready", resolve);
+    client.once("error", reject);
+    client.connect(config);
+  });
+
+  try {
+    const sock = await new Promise<ClientChannel>((resolve, reject) => {
+      client.forwardOut("127.0.0.1", 0, targetHost, targetPort, (err, stream) => {
+        if (err) reject(err);
+        else resolve(stream);
+      });
+    });
+    return { client, sock };
+  } catch (err) {
+    client.end();
+    throw err;
+  }
+}
+
 export class SshSession extends BaseSession {
   readonly info: SessionInfo;
   private sftp: SftpClient;
+  private jumpClient: Client | null;
 
-  private constructor(sftp: SftpClient, info: SessionInfo) {
+  private constructor(sftp: SftpClient, info: SessionInfo, jumpClient: Client | null = null) {
     super();
     this.sftp = sftp;
     this.info = info;
+    this.jumpClient = jumpClient;
   }
 
   static async connect(
     sessionId: string,
     profile: ConnectionProfile,
     secret: string | null,
+    jumpSecret: string | null = null,
   ): Promise<SshSession> {
     const sftp = new SftpClient(sessionId);
     const host = profile.host;
@@ -104,7 +177,19 @@ export class SshSession extends BaseSession {
       config.password = secret;
     }
 
-    await sftp.connect(config);
+    let jumpClient: Client | null = null;
+    if (profile.jumpHost) {
+      const jump = await connectViaJumpHost(profile.jumpHost, jumpSecret, host, port);
+      jumpClient = jump.client;
+      config.sock = jump.sock;
+    }
+
+    try {
+      await sftp.connect(config);
+    } catch (err) {
+      jumpClient?.end();
+      throw err;
+    }
     const homeDir = await sftp.cwd();
 
     const info: SessionInfo = {
@@ -118,7 +203,7 @@ export class SshSession extends BaseSession {
       supportsTerminal: true,
       kind: "file",
     };
-    return new SshSession(sftp, info);
+    return new SshSession(sftp, info, jumpClient);
   }
 
   async list(remotePath: string): Promise<DirListing> {
@@ -229,11 +314,59 @@ export class SshSession extends BaseSession {
     });
   }
 
+  /** Opens a direct-tcpip channel through this session (local (-L) forwards and the dynamic/SOCKS proxy). */
+  forwardOut(srcHost: string, srcPort: number, dstHost: string, dstPort: number): Promise<ClientChannel> {
+    return new Promise((resolve, reject) => {
+      this.sftp.client.forwardOut(srcHost, srcPort, dstHost, dstPort, (err, stream) => {
+        if (err) reject(err);
+        else resolve(stream);
+      });
+    });
+  }
+
+  /** Asks the remote server to listen on bindHost:bindPort and forward connections back here (remote (-R) forwards). */
+  forwardIn(bindHost: string, bindPort: number): Promise<number> {
+    return new Promise((resolve, reject) => {
+      this.sftp.client.forwardIn(bindHost, bindPort, (err, port) => {
+        if (err) reject(err);
+        else resolve(port);
+      });
+    });
+  }
+
+  unforwardIn(bindHost: string, bindPort: number): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.sftp.client.unforwardIn(bindHost, bindPort, (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+  }
+
+  /** Subscribes to inbound connections on a remote forward opened via forwardIn(). Returns an unsubscribe function. */
+  onTcpConnection(
+    handler: (
+      details: TcpConnectionDetails,
+      accept: AcceptConnection<ClientChannel>,
+      reject: RejectConnection,
+    ) => void,
+  ): () => void {
+    this.sftp.client.on("tcp connection", handler);
+    return () => this.sftp.client.removeListener("tcp connection", handler);
+  }
+
   async close(): Promise<void> {
     try {
       await this.sftp.end();
     } catch {
       // Best-effort teardown.
+    }
+    if (this.jumpClient) {
+      try {
+        this.jumpClient.end();
+      } catch {
+        // Best-effort teardown.
+      }
     }
   }
 }

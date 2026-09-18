@@ -62,6 +62,11 @@ import {
   type DisplayResizeRequest,
   type DisplayDisconnectRequest,
   type DisplayStatusEvent,
+  type PortForwardStartRequest,
+  type PortForwardStopRequest,
+  type PortForwardListRequest,
+  type PortForwardRule,
+  type PortForwardUpdateEvent,
 } from "@shared/ipc-contract";
 
 function invoke<TResult>(channel: string, payload?: unknown): Promise<TResult> {
@@ -202,5 +207,14 @@ export const ipc = {
     disconnect: (req: DisplayDisconnectRequest) => invoke<OkResult>(IPC.display.disconnect, req),
     onStatus: (handler: (payload: DisplayStatusEvent) => void) =>
       on<DisplayStatusEvent>(IPC.display.status, handler),
+  },
+
+  // Port forwards (local/remote — dynamic/SOCKS not implemented yet)
+  portForward: {
+    start: (req: PortForwardStartRequest) => invoke<PortForwardRule>(IPC.portForward.start, req),
+    stop: (req: PortForwardStopRequest) => invoke<OkResult>(IPC.portForward.stop, req),
+    list: (req: PortForwardListRequest) => invoke<PortForwardRule[]>(IPC.portForward.list, req),
+    onUpdate: (handler: (payload: PortForwardUpdateEvent) => void) =>
+      on<PortForwardUpdateEvent>(IPC.portForward.update, handler),
   },
 } as const;

@@ -15,6 +15,30 @@
 export type Protocol = "sftp" | "ftp" | "ftps" | "ssh" | "rdp";
 export type AuthType = "password" | "key";
 
+/**
+ * A bastion/jump host a connection tunnels through (ProxyJump-style): SshSession
+ * connects to this host first, then opens the real target connection through a
+ * `forwardOut` channel over it. Reuses the same auth/secret shape as
+ * ConnectionProfile rather than a separate model.
+ */
+export interface JumpHost {
+  host: string;
+  port: number;
+  username: string;
+  authType: AuthType;
+  /** Absolute path to a private key file when authType === "key". */
+  privateKeyPath?: string | null;
+  /** safeStorage-encrypted base64 (password OR key passphrase). NEVER sent to renderer. */
+  secret?: string | null;
+}
+
+export type JumpHostDTO = Omit<JumpHost, "secret"> & { hasSecret: boolean };
+
+export type JumpHostInput = Omit<JumpHost, "secret"> & {
+  /** Plaintext secret to encrypt & store; omit to leave an existing secret unchanged. */
+  secret?: string | null;
+};
+
 /** A saved connection profile, as persisted on disk (backend-only — includes secret). */
 export interface ConnectionProfile {
   id: string;
@@ -34,17 +58,21 @@ export interface ConnectionProfile {
   lastConnectedAt?: number | null;
   /** safeStorage-encrypted base64 (password OR key passphrase). NEVER sent to renderer. */
   secret?: string | null;
+  /** Only meaningful for sftp/ssh — SshSession tunnels the connection through this host when set. */
+  jumpHost?: JumpHost | null;
 }
 
 /** Renderer-facing profile: secret stripped, replaced by a boolean flag. */
-export type ConnectionProfileDTO = Omit<ConnectionProfile, "secret"> & {
+export type ConnectionProfileDTO = Omit<ConnectionProfile, "secret" | "jumpHost"> & {
   hasSecret: boolean;
+  jumpHost?: JumpHostDTO | null;
 };
 
 /** Fields the renderer sends when creating/updating a profile. */
-export type ConnectionInput = Omit<ConnectionProfile, "id" | "secret"> & {
+export type ConnectionInput = Omit<ConnectionProfile, "id" | "secret" | "jumpHost"> & {
   /** Plaintext secret to encrypt & store; omit to leave an existing secret unchanged. */
   secret?: string | null;
+  jumpHost?: JumpHostInput | null;
 };
 
 export interface Folder {
@@ -330,6 +358,50 @@ export interface SyncProgressEvent {
   total: number;
   relPath: string;
 }
+// ── Port forwards (invoke + events, per SSH session) ───────────────────────
+
+/**
+ * "local" (-L): listen on srcHost:srcPort, forward each connection through the
+ * session to dstHost:dstPort. "remote" (-R): ask the remote server to listen
+ * on srcHost:srcPort and forward connections back to dstHost:dstPort. "dynamic"
+ * (-D, SOCKS) is not implemented yet — the renderer does not offer it.
+ */
+export type PortForwardType = "local" | "remote" | "dynamic";
+export type PortForwardState = "starting" | "listening" | "error" | "stopped";
+
+export interface PortForwardRule {
+  id: string;
+  sessionId: string;
+  type: PortForwardType;
+  /** Bind/listen address for local forwards (remote forwards bind on the server side). */
+  srcHost: string;
+  srcPort: number;
+  /** Forward destination — required for local/remote; absent for dynamic. */
+  dstHost?: string | null;
+  dstPort?: number | null;
+  state: PortForwardState;
+  error?: string | null;
+  connectionCount: number;
+  bytesIn: number;
+  bytesOut: number;
+}
+
+// portForward:start { sessionId, type, srcHost?, srcPort, dstHost?, dstPort? } → PortForwardRule
+// portForward:stop  { id }                                                    → OkResult
+// portForward:list  { sessionId }                                             → PortForwardRule[]
+export interface PortForwardStartRequest {
+  sessionId: string;
+  type: PortForwardType;
+  srcHost?: string;
+  srcPort: number;
+  dstHost?: string;
+  dstPort?: number;
+}
+export interface PortForwardStopRequest { id: string }
+export interface PortForwardListRequest { sessionId: string }
+
+// event↓ portForward:update { rule }  (connection count/bytes/state changed)
+export interface PortForwardUpdateEvent { rule: PortForwardRule }
 
 // ── Terminal (invoke + events) ────────────────────────────────────────────────
 
@@ -411,6 +483,12 @@ export const IPC = {
     input: "terminal:input",
     data: "terminal:data",
     exit: "terminal:exit",
+  },
+  portForward: {
+    start: "portForward:start",
+    stop: "portForward:stop",
+    list: "portForward:list",
+    update: "portForward:update",
   },
   display: {
     connect: "display:connect",

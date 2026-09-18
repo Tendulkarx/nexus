@@ -18,6 +18,7 @@ import { getPreloadPath, getWindowUrl } from "./windows/window-paths.js";
 import { openSettingsWindow } from "./windows/settings-window.js";
 import { editManager } from "./services/edit-manager.js";
 import { prepareDragDownload } from "./services/drag-download.js";
+import { portForwardManager } from "./services/port-forward-manager.js";
 import { sessionManager } from "./services/session-manager.js";
 import { sshTerminalService } from "./services/ssh-terminal-service.js";
 import { transferManager } from "./services/transfer-manager.js";
@@ -243,6 +244,7 @@ app.on("before-quit", () => {
   transferManager.cancelAll();
   editManager.closeAll();
   sshTerminalService.closeAll();
+  void portForwardManager.closeAll();
   void sessionManager.closeAll();
 });
 

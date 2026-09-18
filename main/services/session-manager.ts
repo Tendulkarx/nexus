@@ -23,7 +23,7 @@ export class SessionManager {
   private sessions = new Map<string, ManagedSession>();
 
   async connect(request: SessionConnectRequest): Promise<SessionInfo> {
-    const { profile, secret } = await this.resolveProfile(request);
+    const { profile, secret, jumpSecret } = await this.resolveProfile(request);
     const sessionId = randomUUID();
 
     // Real switch (not the old two-way ftp/ftps-else-ssh branch) so every
@@ -38,7 +38,7 @@ export class SessionManager {
         break;
       case "sftp":
       case "ssh":
-        session = await SshSession.connect(sessionId, profile, secret);
+        session = await SshSession.connect(sessionId, profile, secret, jumpSecret);
         break;
       case "rdp":
         // Unlike file sessions, this doesn't open a real connection yet — the
@@ -65,13 +65,14 @@ export class SessionManager {
 
   private async resolveProfile(
     request: SessionConnectRequest,
-  ): Promise<{ profile: ConnectionProfile; secret: string | null }> {
+  ): Promise<{ profile: ConnectionProfile; secret: string | null; jumpSecret: string | null }> {
     if (request.profileId) {
       const stored = await connectionStore.getRaw(request.profileId);
       if (!stored) throw new Error(`Connection profile not found: ${request.profileId}`);
       // A freshly-typed password (request.secret) overrides any stored one.
       const secret = request.secret ?? (stored.secret ? await credentialVault.decrypt(stored.secret) : null);
-      return { profile: stored, secret };
+      const jumpSecret = stored.jumpHost?.secret ? await credentialVault.decrypt(stored.jumpHost.secret) : null;
+      return { profile: stored, secret, jumpSecret };
     }
 
     if (request.inlineProfile) {
@@ -90,8 +91,22 @@ export class SessionManager {
         defaultRemotePath: input.defaultRemotePath ?? null,
         color: input.color ?? null,
         secret: null,
+        jumpHost: input.jumpHost
+          ? {
+              host: input.jumpHost.host,
+              port: input.jumpHost.port,
+              username: input.jumpHost.username,
+              authType: input.jumpHost.authType,
+              privateKeyPath: input.jumpHost.privateKeyPath ?? null,
+              secret: null,
+            }
+          : null,
       };
-      return { profile, secret: input.secret ?? request.secret ?? null };
+      return {
+        profile,
+        secret: input.secret ?? request.secret ?? null,
+        jumpSecret: input.jumpHost?.secret ?? null,
+      };
     }
 
     throw new Error("session:connect requires either profileId or inlineProfile");
