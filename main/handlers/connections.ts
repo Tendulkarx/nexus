@@ -4,9 +4,10 @@
  */
 import { ipcMain } from "electron";
 
-import { asRecord, optString, reqNumber, reqString } from "./validate.js";
+import { asRecord, optString, reqBool, reqNumber, reqString } from "./validate.js";
 import { connectionStore } from "../services/connection-store.js";
 import { checkReachable } from "../services/reachability.js";
+import { exportConnections, importConnections } from "../services/connection-transfer.js";
 
 import { IPC } from "../../renderer/shared/ipc-contract.js";
 import type { AuthType, ConnectionInput, JumpHostInput, Protocol } from "@shared/ipc-contract";
@@ -121,6 +122,22 @@ export function registerConnectionHandlers(): void {
     const port = reqNumber(obj, "port", "connections:checkReachability");
     const reachable = await checkReachable(host, port);
     return { reachable };
+  });
+
+  ipcMain.handle(IPC.connections.export, async (_e, payload: unknown) => {
+    const obj = asRecord(payload, "connections:export");
+    const filePath = reqString(obj, "filePath", "connections:export");
+    const includeSecrets = reqBool(obj, "includeSecrets", "connections:export");
+    const profileIds = Array.isArray(obj.profileIds)
+      ? obj.profileIds.filter((id): id is string => typeof id === "string")
+      : undefined;
+    return exportConnections({ filePath, includeSecrets, profileIds, password: optString(obj, "password") });
+  });
+
+  ipcMain.handle(IPC.connections.import, async (_e, payload: unknown) => {
+    const obj = asRecord(payload, "connections:import");
+    const filePath = reqString(obj, "filePath", "connections:import");
+    return importConnections({ filePath, password: optString(obj, "password") });
   });
 
   ipcMain.handle(IPC.folders.create, async (_e, payload: unknown) => {

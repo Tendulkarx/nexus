@@ -14,6 +14,10 @@ import {
   type ConnectionsMoveRequest,
   type ConnectionsCheckReachabilityRequest,
   type ConnectionsCheckReachabilityResult,
+  type ConnectionsExportRequest,
+  type ConnectionsExportResult,
+  type ConnectionsImportRequest,
+  type ConnectionsImportResult,
   type FoldersCreateRequest,
   type FoldersRenameRequest,
   type FoldersDeleteRequest,
@@ -99,6 +103,10 @@ export const ipc = {
       invoke<ConnectionProfileDTO>(IPC.connections.moveToFolder, req),
     checkReachability: (req: ConnectionsCheckReachabilityRequest) =>
       invoke<ConnectionsCheckReachabilityResult>(IPC.connections.checkReachability, req),
+    export: (req: ConnectionsExportRequest) =>
+      invoke<ConnectionsExportResult>(IPC.connections.export, req),
+    import: (req: ConnectionsImportRequest) =>
+      invoke<ConnectionsImportResult>(IPC.connections.import, req),
   },
 
   // Folders

@@ -11,6 +11,7 @@ import {
   ShieldIcon,
   KeyIcon,
   ServerIcon,
+  CopyIcon,
 } from "lucide-react";
 import type { ConnectionProfileDTO } from "@shared/ipc-contract";
 import { cn } from "@renderer/lib/cn";
@@ -24,6 +25,7 @@ interface ProfileCardProps {
   connecting: boolean;
   onConnect: () => void;
   onEdit: () => void;
+  onDuplicate: () => void;
   onDelete: () => void;
 }
 
@@ -49,6 +51,7 @@ export function ProfileCard({
   connecting,
   onConnect,
   onEdit,
+  onDuplicate,
   onDelete,
 }: ProfileCardProps) {
   return (
@@ -142,6 +145,15 @@ export function ProfileCard({
           aria-label="Edit"
         >
           <EditIcon className="size-3.5 text-secondary" />
+        </Button>
+        <Button
+          variant="transparent"
+          size="small"
+          iconOnly
+          onClick={onDuplicate}
+          aria-label="Duplicate"
+        >
+          <CopyIcon className="size-3.5 text-secondary" />
         </Button>
         <Button
           variant="transparent"

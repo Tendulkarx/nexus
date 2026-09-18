@@ -8,6 +8,7 @@ import {
   EditIcon,
   Trash2Icon,
   PlugIcon,
+  CopyIcon,
 } from "lucide-react";
 import type { ConnectionProfileDTO } from "@shared/ipc-contract";
 import { HealthDot, formatLastConnected } from "./connection-health";
@@ -20,6 +21,7 @@ interface ProfileRowProps {
   connecting: boolean;
   onConnect: () => void;
   onEdit: () => void;
+  onDuplicate: () => void;
   onDelete: () => void;
 }
 
@@ -37,6 +39,7 @@ export function ProfileRow({
   connecting,
   onConnect,
   onEdit,
+  onDuplicate,
   onDelete,
 }: ProfileRowProps) {
   return (
@@ -61,6 +64,9 @@ export function ProfileRow({
       <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
         <Button variant="transparent" size="small" iconOnly onClick={onEdit} aria-label="Edit">
           <EditIcon className="size-3.5 text-secondary" />
+        </Button>
+        <Button variant="transparent" size="small" iconOnly onClick={onDuplicate} aria-label="Duplicate">
+          <CopyIcon className="size-3.5 text-secondary" />
         </Button>
         <Button variant="transparent" size="small" iconOnly onClick={onDelete} aria-label="Delete">
           <Trash2Icon className="size-3.5 text-secondary" />

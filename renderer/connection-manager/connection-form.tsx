@@ -30,6 +30,8 @@ const COLOR_SWATCHES = [
 
 interface ConnectionFormProps {
   editProfile?: ConnectionProfileDTO;
+  /** Pre-fill from an existing profile without editing it — always creates a new one, and never carries over the secret. */
+  duplicateFrom?: ConnectionProfileDTO;
   folders: Folder[];
   onSave: (profile: ConnectionProfileDTO) => void;
   onCancel: () => void;
@@ -43,34 +45,40 @@ const DEFAULT_PORTS: Record<Protocol, number> = {
   rdp: 3389,
 };
 
-export function ConnectionForm({ editProfile, folders, onSave, onCancel }: ConnectionFormProps) {
-  const [name, setName] = React.useState(editProfile?.name ?? "");
-  const [protocol, setProtocol] = React.useState<Protocol>(editProfile?.protocol ?? "sftp");
-  const [host, setHost] = React.useState(editProfile?.host ?? "");
-  const [port, setPort] = React.useState(String(editProfile?.port ?? 22));
-  const [username, setUsername] = React.useState(editProfile?.username ?? "");
-  const [authType, setAuthType] = React.useState<AuthType>(editProfile?.authType ?? "password");
+export function ConnectionForm({ editProfile, duplicateFrom, folders, onSave, onCancel }: ConnectionFormProps) {
+  // duplicateFrom pre-fills the same fields editProfile would, but the form
+  // still saves via create (below) rather than update, since editProfile is unset.
+  const prefill = editProfile ?? duplicateFrom;
+
+  const [name, setName] = React.useState(
+    editProfile ? editProfile.name : duplicateFrom ? `${duplicateFrom.name} Copy` : "",
+  );
+  const [protocol, setProtocol] = React.useState<Protocol>(prefill?.protocol ?? "sftp");
+  const [host, setHost] = React.useState(prefill?.host ?? "");
+  const [port, setPort] = React.useState(String(prefill?.port ?? 22));
+  const [username, setUsername] = React.useState(prefill?.username ?? "");
+  const [authType, setAuthType] = React.useState<AuthType>(prefill?.authType ?? "password");
   const [secret, setSecret] = React.useState("");
-  const [privateKeyPath, setPrivateKeyPath] = React.useState(editProfile?.privateKeyPath ?? "");
-  const [folderId, setFolderId] = React.useState(editProfile?.folderId ?? "");
-  const [defaultRemotePath, setDefaultRemotePath] = React.useState(editProfile?.defaultRemotePath ?? "");
-  const [tags, setTags] = React.useState(editProfile?.tags.join(", ") ?? "");
-  const [color, setColor] = React.useState<string | null>(editProfile?.color ?? null);
+  const [privateKeyPath, setPrivateKeyPath] = React.useState(prefill?.privateKeyPath ?? "");
+  const [folderId, setFolderId] = React.useState(prefill?.folderId ?? "");
+  const [defaultRemotePath, setDefaultRemotePath] = React.useState(prefill?.defaultRemotePath ?? "");
+  const [tags, setTags] = React.useState(prefill?.tags.join(", ") ?? "");
+  const [color, setColor] = React.useState<string | null>(prefill?.color ?? null);
 
-  const [jumpEnabled, setJumpEnabled] = React.useState(Boolean(editProfile?.jumpHost));
-  const [jumpHostAddress, setJumpHostAddress] = React.useState(editProfile?.jumpHost?.host ?? "");
-  const [jumpPort, setJumpPort] = React.useState(String(editProfile?.jumpHost?.port ?? 22));
-  const [jumpUsername, setJumpUsername] = React.useState(editProfile?.jumpHost?.username ?? "");
-  const [jumpAuthType, setJumpAuthType] = React.useState<AuthType>(editProfile?.jumpHost?.authType ?? "password");
+  const [jumpEnabled, setJumpEnabled] = React.useState(Boolean(prefill?.jumpHost));
+  const [jumpHostAddress, setJumpHostAddress] = React.useState(prefill?.jumpHost?.host ?? "");
+  const [jumpPort, setJumpPort] = React.useState(String(prefill?.jumpHost?.port ?? 22));
+  const [jumpUsername, setJumpUsername] = React.useState(prefill?.jumpHost?.username ?? "");
+  const [jumpAuthType, setJumpAuthType] = React.useState<AuthType>(prefill?.jumpHost?.authType ?? "password");
   const [jumpSecret, setJumpSecret] = React.useState("");
-  const [jumpPrivateKeyPath, setJumpPrivateKeyPath] = React.useState(editProfile?.jumpHost?.privateKeyPath ?? "");
+  const [jumpPrivateKeyPath, setJumpPrivateKeyPath] = React.useState(prefill?.jumpHost?.privateKeyPath ?? "");
 
-  // Auto-update port when protocol changes
+  // Auto-update port when protocol changes (not for edit/duplicate, which start from an existing port).
   React.useEffect(() => {
-    if (!editProfile) {
+    if (!prefill) {
       setPort(String(DEFAULT_PORTS[protocol]));
     }
-  }, [protocol, editProfile]);
+  }, [protocol, prefill]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {

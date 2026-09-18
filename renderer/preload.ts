@@ -10,7 +10,13 @@
  * - We never expose ipcRenderer directly — only specific, controlled channels.
  */
 import { contextBridge, ipcRenderer, webUtils } from "electron";
-import type { IpcRendererEvent, OpenDialogOptions, OpenDialogReturnValue } from "electron";
+import type {
+  IpcRendererEvent,
+  OpenDialogOptions,
+  OpenDialogReturnValue,
+  SaveDialogOptions,
+  SaveDialogReturnValue,
+} from "electron";
 import type { NativeThemeInfo } from "./lib/native-theme";
 
 interface PopupMenuItem {
@@ -31,6 +37,8 @@ const nexusAPI = {
   dialog: {
     showOpenDialog: (options?: OpenDialogOptions): Promise<OpenDialogReturnValue> =>
       ipcRenderer.invoke("dialog:showOpenDialog", options),
+    showSaveDialog: (options?: SaveDialogOptions): Promise<SaveDialogReturnValue> =>
+      ipcRenderer.invoke("dialog:showSaveDialog", options),
   },
 
   webUtils: {

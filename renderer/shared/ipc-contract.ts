@@ -143,6 +143,42 @@ export interface OkResult { ok: true }
 export interface ConnectionsCheckReachabilityRequest { host: string; port: number }
 export interface ConnectionsCheckReachabilityResult { reachable: boolean }
 
+/**
+ * connections:export / connections:import — portable backup of profiles +
+ * folders to/from a single JSON file, written/read at a path the renderer
+ * already picked via the dialog.showSaveDialog/showOpenDialog native bridge.
+ *
+ * Secrets are OMITTED by default — the safer choice, since the export file
+ * may end up backed up or shared somewhere less trusted than this machine's
+ * Keychain. Including them is an explicit opt-in that requires an export
+ * password: each secret is decrypted from the vault and re-encrypted with a
+ * key derived from that password (scrypt, see connection-export-crypto.ts) —
+ * never exported as its safeStorage ciphertext, which is bound to this
+ * machine/user's OS keychain and would be undecryptable anywhere else.
+ */
+export interface ConnectionsExportRequest {
+  filePath: string;
+  /** Omit to export every saved profile. */
+  profileIds?: string[];
+  includeSecrets: boolean;
+  /** Required iff includeSecrets is true. */
+  password?: string;
+}
+export interface ConnectionsExportResult {
+  profileCount: number;
+  folderCount: number;
+}
+
+export interface ConnectionsImportRequest {
+  filePath: string;
+  /** Required iff the file was exported with includeSecrets. */
+  password?: string;
+}
+export interface ConnectionsImportResult {
+  profileCount: number;
+  folderCount: number;
+}
+
 // ── Sessions (invoke) ──────────────────────────────────────────────────────
 
 /**
@@ -431,6 +467,8 @@ export const IPC = {
     delete: "connections:delete",
     moveToFolder: "connections:moveToFolder",
     checkReachability: "connections:checkReachability",
+    export: "connections:export",
+    import: "connections:import",
   },
   folders: {
     create: "folders:create",
