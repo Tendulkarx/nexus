@@ -8,10 +8,27 @@ import { asRecord, optString, reqString } from "./validate.js";
 import { connectionStore } from "../services/connection-store.js";
 
 import { IPC } from "../../renderer/shared/ipc-contract.js";
-import type { AuthType, ConnectionInput, Protocol } from "@shared/ipc-contract";
+import type { AuthType, ConnectionInput, JumpHostInput, Protocol } from "@shared/ipc-contract";
 
 const PROTOCOLS: Protocol[] = ["sftp", "ftp", "ftps", "ssh", "rdp"];
 const AUTH_TYPES: AuthType[] = ["password", "key"];
+
+function coerceJumpHost(value: unknown, context: string): JumpHostInput {
+  const obj = asRecord(value, context);
+  const authType = reqString(obj, "authType", context) as AuthType;
+  if (!AUTH_TYPES.includes(authType)) throw new Error(`${context}: invalid authType "${authType}"`);
+  const portValue = obj.port;
+  const port = typeof portValue === "number" && !Number.isNaN(portValue) ? portValue : 0;
+
+  return {
+    host: reqString(obj, "host", context),
+    port,
+    username: reqString(obj, "username", context),
+    authType,
+    privateKeyPath: optString(obj, "privateKeyPath") ?? null,
+    secret: optString(obj, "secret") ?? undefined,
+  };
+}
 
 function coerceInput(value: unknown, context: string): ConnectionInput {
   const obj = asRecord(value, context);
@@ -37,6 +54,7 @@ function coerceInput(value: unknown, context: string): ConnectionInput {
     defaultRemotePath: optString(obj, "defaultRemotePath") ?? null,
     color: optString(obj, "color") ?? null,
     secret: optString(obj, "secret") ?? undefined,
+    jumpHost: obj.jumpHost ? coerceJumpHost(obj.jumpHost, `${context}.jumpHost`) : null,
   };
 }
 
@@ -58,6 +76,9 @@ function coercePatch(value: unknown, context: string): Partial<ConnectionInput> 
   if ("defaultRemotePath" in obj) patch.defaultRemotePath = optString(obj, "defaultRemotePath") ?? null;
   if ("color" in obj) patch.color = optString(obj, "color") ?? null;
   if (typeof obj.secret === "string") patch.secret = obj.secret;
+  if ("jumpHost" in obj) {
+    patch.jumpHost = obj.jumpHost === null ? null : coerceJumpHost(obj.jumpHost, `${context}.jumpHost`);
+  }
   return patch;
 }
 

@@ -5,6 +5,7 @@ import { ipcMain } from "electron";
 
 import { asRecord, optString, reqString } from "./validate.js";
 import { editManager } from "../services/edit-manager.js";
+import { portForwardManager } from "../services/port-forward-manager.js";
 import { sessionManager } from "../services/session-manager.js";
 
 import { IPC } from "../../renderer/shared/ipc-contract.js";
@@ -25,6 +26,7 @@ export function registerSessionHandlers(): void {
     const obj = asRecord(payload, "session:disconnect");
     const sessionId = reqString(obj, "sessionId", "session:disconnect");
     editManager.closeForSession(sessionId);
+    await portForwardManager.closeForSession(sessionId);
     await sessionManager.disconnect(sessionId);
     return { ok: true as const };
   });

@@ -14,6 +14,9 @@ import type {
   ConnectionProfileDTO,
   ConnectionsListResult,
   Folder,
+  JumpHost,
+  JumpHostDTO,
+  JumpHostInput,
 } from "@shared/ipc-contract";
 
 interface ConnectionFile {
@@ -24,9 +27,14 @@ interface ConnectionFile {
 
 const DEFAULT_FILE: ConnectionFile = { version: 1, folders: [], profiles: [] };
 
-function toDTO(profile: ConnectionProfile): ConnectionProfileDTO {
-  const { secret, ...rest } = profile;
+function toJumpHostDTO(jumpHost: JumpHost): JumpHostDTO {
+  const { secret, ...rest } = jumpHost;
   return { ...rest, hasSecret: Boolean(secret) };
+}
+
+function toDTO(profile: ConnectionProfile): ConnectionProfileDTO {
+  const { secret, jumpHost, ...rest } = profile;
+  return { ...rest, hasSecret: Boolean(secret), jumpHost: jumpHost ? toJumpHostDTO(jumpHost) : null };
 }
 
 export class ConnectionStore {
@@ -56,6 +64,17 @@ export class ConnectionStore {
     return data.profiles.find((p) => p.id === id) ?? null;
   }
 
+  private async buildJumpHost(input: JumpHostInput): Promise<JumpHost> {
+    return {
+      host: input.host,
+      port: input.port,
+      username: input.username,
+      authType: input.authType,
+      privateKeyPath: input.privateKeyPath ?? null,
+      secret: input.secret ? await credentialVault.encrypt(input.secret) : null,
+    };
+  }
+
   async create(input: ConnectionInput): Promise<ConnectionProfileDTO> {
     const data = await this.data();
     const profile: ConnectionProfile = {
@@ -72,6 +91,7 @@ export class ConnectionStore {
       defaultRemotePath: input.defaultRemotePath ?? null,
       color: input.color ?? null,
       secret: input.secret ? await credentialVault.encrypt(input.secret) : null,
+      jumpHost: input.jumpHost ? await this.buildJumpHost(input.jumpHost) : null,
     };
     data.profiles.push(profile);
     await this.store.save(data);
@@ -97,6 +117,22 @@ export class ConnectionStore {
     // Only re-encrypt when a non-empty secret is supplied; undefined leaves it unchanged.
     if (patch.secret !== undefined && patch.secret !== null && patch.secret !== "") {
       profile.secret = await credentialVault.encrypt(patch.secret);
+    }
+    if (patch.jumpHost !== undefined) {
+      if (patch.jumpHost === null) {
+        profile.jumpHost = null;
+      } else {
+        // A blank secret on an edit means "keep the existing one", same as the profile's own secret above.
+        const existingSecret = profile.jumpHost?.secret ?? null;
+        profile.jumpHost = {
+          host: patch.jumpHost.host,
+          port: patch.jumpHost.port,
+          username: patch.jumpHost.username,
+          authType: patch.jumpHost.authType,
+          privateKeyPath: patch.jumpHost.privateKeyPath ?? null,
+          secret: patch.jumpHost.secret ? await credentialVault.encrypt(patch.jumpHost.secret) : existingSecret,
+        };
+      }
     }
 
     await this.store.save(data);

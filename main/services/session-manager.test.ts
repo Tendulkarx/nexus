@@ -140,6 +140,72 @@ describe("SessionManager", () => {
       expect.any(String),
       expect.objectContaining({ id: "p1" }),
       "typed-override",
+      null,
+    );
+  });
+
+  it("decrypts a stored profile's jump-host secret separately from its own secret", async () => {
+    connectionStore.getRaw.mockResolvedValue({
+      id: "p1",
+      protocol: "sftp",
+      secret: "encrypted-blob",
+      jumpHost: {
+        host: "bastion.example.com",
+        port: 22,
+        username: "jumpuser",
+        authType: "password",
+        secret: "jump-encrypted-blob",
+      },
+    } as unknown as ConnectionProfile);
+    credentialVault.decrypt.mockImplementation(async (value: string) =>
+      value === "encrypted-blob" ? "stored-password" : "stored-jump-password",
+    );
+
+    const manager = new SessionManager();
+    await manager.connect({ profileId: "p1" });
+
+    expect(credentialVault.decrypt).toHaveBeenCalledWith("encrypted-blob");
+    expect(credentialVault.decrypt).toHaveBeenCalledWith("jump-encrypted-blob");
+    expect(FakeSshSession.connect).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ id: "p1" }),
+      "stored-password",
+      "stored-jump-password",
+    );
+  });
+
+  it("passes an inline profile's jump-host secret through as plaintext, without decrypting, and keeps profile.jumpHost.secret null", async () => {
+    const request = {
+      inlineProfile: {
+        name: "test",
+        protocol: "sftp" as const,
+        host: "example.com",
+        port: 22,
+        username: "root",
+        authType: "password" as const,
+        tags: [],
+        secret: "hunter2",
+        jumpHost: {
+          host: "bastion.example.com",
+          port: 2222,
+          username: "jumpuser",
+          authType: "password" as const,
+          secret: "jump-hunter2",
+        },
+      },
+    };
+
+    const manager = new SessionManager();
+    await manager.connect(request);
+
+    expect(credentialVault.decrypt).not.toHaveBeenCalled();
+    expect(FakeSshSession.connect).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        jumpHost: expect.objectContaining({ host: "bastion.example.com", secret: null }),
+      }),
+      "hunter2",
+      "jump-hunter2",
     );
   });
 

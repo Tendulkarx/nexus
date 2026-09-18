@@ -7,6 +7,7 @@ import { registerConnectionHandlers } from "./connections.js";
 import { registerDisplayHandlers } from "./display.js";
 import { registerEditHandlers } from "./edit.js";
 import { registerFilesystemHandlers } from "./filesystem.js";
+import { registerPortForwardHandlers } from "./port-forwards.js";
 import { registerSessionHandlers } from "./sessions.js";
 import { registerTerminalHandlers } from "./terminal.js";
 import { registerTransferHandlers } from "./transfers.js";
@@ -40,6 +41,7 @@ export function registerHandlers(): void {
   registerTerminalHandlers();
   registerEditHandlers();
   registerDisplayHandlers();
+  registerPortForwardHandlers();
 
   logger.info("handlers", "✓ IPC handlers registered");
 }

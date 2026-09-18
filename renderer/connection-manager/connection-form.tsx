@@ -57,6 +57,14 @@ export function ConnectionForm({ editProfile, folders, onSave, onCancel }: Conne
   const [tags, setTags] = React.useState(editProfile?.tags.join(", ") ?? "");
   const [color, setColor] = React.useState<string | null>(editProfile?.color ?? null);
 
+  const [jumpEnabled, setJumpEnabled] = React.useState(Boolean(editProfile?.jumpHost));
+  const [jumpHostAddress, setJumpHostAddress] = React.useState(editProfile?.jumpHost?.host ?? "");
+  const [jumpPort, setJumpPort] = React.useState(String(editProfile?.jumpHost?.port ?? 22));
+  const [jumpUsername, setJumpUsername] = React.useState(editProfile?.jumpHost?.username ?? "");
+  const [jumpAuthType, setJumpAuthType] = React.useState<AuthType>(editProfile?.jumpHost?.authType ?? "password");
+  const [jumpSecret, setJumpSecret] = React.useState("");
+  const [jumpPrivateKeyPath, setJumpPrivateKeyPath] = React.useState(editProfile?.jumpHost?.privateKeyPath ?? "");
+
   // Auto-update port when protocol changes
   React.useEffect(() => {
     if (!editProfile) {
@@ -79,6 +87,16 @@ export function ConnectionForm({ editProfile, folders, onSave, onCancel }: Conne
         tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
         color,
         secret: secret || undefined,
+        jumpHost: jumpEnabled
+          ? {
+              host: jumpHostAddress,
+              port: parseInt(jumpPort, 10) || 22,
+              username: jumpUsername,
+              authType: jumpAuthType,
+              privateKeyPath: jumpAuthType === "key" ? (jumpPrivateKeyPath || null) : null,
+              secret: jumpSecret || undefined,
+            }
+          : null,
       };
       if (editProfile) {
         return ipc.connections.update({ id: editProfile.id, patch: input });
@@ -102,7 +120,21 @@ export function ConnectionForm({ editProfile, folders, onSave, onCancel }: Conne
     }
   }
 
-  const isValid = name.trim() && host.trim() && username.trim();
+  async function pickJumpKeyFile() {
+    const result = await window.nexusAPI.dialog.showOpenDialog({
+      title: "Select Jump Host Private Key",
+      properties: ["openFile"],
+    });
+    if (!result.canceled && result.filePaths.length > 0 && result.filePaths[0]) {
+      setJumpPrivateKeyPath(result.filePaths[0]);
+    }
+  }
+
+  const isValid =
+    name.trim() &&
+    host.trim() &&
+    username.trim() &&
+    (!jumpEnabled || (jumpHostAddress.trim() && jumpUsername.trim()));
 
   return (
     <div className="flex flex-col">
@@ -211,6 +243,103 @@ export function ConnectionForm({ editProfile, folders, onSave, onCancel }: Conne
             </>
           )}
         </FieldSet>
+
+        {(protocol === "sftp" || protocol === "ssh") && (
+          <FieldSet title="Jump Host (Bastion)">
+            <Field orientation="horizontal">
+              <label className="flex items-center gap-2 text-sm text-primary">
+                <input
+                  type="checkbox"
+                  checked={jumpEnabled}
+                  onChange={(e) => setJumpEnabled(e.target.checked)}
+                />
+                Connect through a jump host
+              </label>
+            </Field>
+
+            {jumpEnabled && (
+              <>
+                <Field label="Host" orientation="horizontal">
+                  <Input
+                    placeholder="bastion.example.com"
+                    value={jumpHostAddress}
+                    onChange={(e) => setJumpHostAddress(e.target.value)}
+                  />
+                </Field>
+                <Field label="Port" orientation="horizontal">
+                  <Input
+                    type="number"
+                    placeholder="22"
+                    value={jumpPort}
+                    onChange={(e) => setJumpPort(e.target.value)}
+                  />
+                </Field>
+                <Field label="Username" orientation="horizontal">
+                  <Input
+                    placeholder="admin"
+                    value={jumpUsername}
+                    onChange={(e) => setJumpUsername(e.target.value)}
+                  />
+                </Field>
+                <Field label="Auth Type" orientation="horizontal">
+                  <Select value={jumpAuthType} onValueChange={(v) => setJumpAuthType(v as AuthType)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="password">Password</SelectItem>
+                      <SelectItem value="key">Private Key</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+
+                {jumpAuthType === "password" ? (
+                  <Field
+                    label={editProfile?.jumpHost?.hasSecret ? "New password (leave blank to keep)" : "Password"}
+                    orientation="horizontal"
+                  >
+                    <Input
+                      type="password"
+                      placeholder={editProfile?.jumpHost?.hasSecret ? "••••••••" : "optional"}
+                      value={jumpSecret}
+                      onChange={(e) => setJumpSecret(e.target.value)}
+                    />
+                  </Field>
+                ) : (
+                  <>
+                    <Field label="Private Key" orientation="horizontal">
+                      <div className="flex items-center gap-2 w-full">
+                        <Input
+                          placeholder="/Users/you/.ssh/id_rsa"
+                          value={jumpPrivateKeyPath}
+                          onChange={(e) => setJumpPrivateKeyPath(e.target.value)}
+                          className="flex-1 min-w-0"
+                        />
+                        <Button
+                          variant="filled"
+                          size="medium"
+                          iconOnly
+                          onClick={() => void pickJumpKeyFile()}
+                          aria-label="Browse for jump host key file"
+                        >
+                          <FolderOpenIcon className="size-4" />
+                        </Button>
+                      </div>
+                    </Field>
+                    <Field label="Passphrase" orientation="horizontal">
+                      <Input
+                        type="password"
+                        placeholder="optional"
+                        value={jumpSecret}
+                        onChange={(e) => setJumpSecret(e.target.value)}
+                      />
+                    </Field>
+                  </>
+                )}
+              </>
+            )}
+          </FieldSet>
+        )}
 
         <FieldSet title="Options">
           {folders.length > 0 && (

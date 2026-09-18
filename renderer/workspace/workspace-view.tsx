@@ -19,6 +19,7 @@ import {
   FolderIcon,
   TerminalIcon,
   ArrowDownToLineIcon,
+  NetworkIcon,
 } from "lucide-react";
 import { getSession, removeSession } from "@renderer/lib/sessions";
 import { closeOpenSession } from "@renderer/lib/open-sessions-store";
@@ -28,6 +29,7 @@ import { DualPaneView } from "./files/dual-pane-view";
 import { TerminalTabs } from "./terminal/terminal-tabs";
 import { TransferQueuePanel } from "./transfer-queue/transfer-queue-panel";
 import { RemoteDesktopPane } from "./remote-desktop/remote-desktop-pane";
+import { PortForwardPanel } from "./port-forwards/port-forward-panel";
 
 interface WorkspaceViewProps {
   sessionId: string;
@@ -154,6 +156,12 @@ export function WorkspaceView({ sessionId }: WorkspaceViewProps) {
                     Terminal
                   </TabsTrigger>
                 )}
+                {session.supportsTerminal && (
+                  <TabsTrigger value="forwards">
+                    <NetworkIcon className="size-3.5 mr-1.5" />
+                    Forwards
+                  </TabsTrigger>
+                )}
               </Tabs>
             </div>
 
@@ -166,6 +174,12 @@ export function WorkspaceView({ sessionId }: WorkspaceViewProps) {
               {session.supportsTerminal && (
                 <TabsContent value="terminal" className="h-full absolute inset-0 data-[state=inactive]:pointer-events-none">
                   <TerminalTabs session={session} isVisible={activeTab === "terminal"} />
+                </TabsContent>
+              )}
+
+              {session.supportsTerminal && (
+                <TabsContent value="forwards" className="h-full absolute inset-0 data-[state=inactive]:pointer-events-none">
+                  <PortForwardPanel sessionId={session.sessionId} />
                 </TabsContent>
               )}
             </div>
