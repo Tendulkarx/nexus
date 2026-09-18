@@ -1,9 +1,10 @@
 import * as React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { PanelGroup, Panel } from "@renderer/lib/ui";
-import type { SessionInfo } from "@shared/ipc-contract";
+import type { FsEntry, SessionInfo } from "@shared/ipc-contract";
 import { ipc } from "@renderer/lib/ipc";
 import { FilePane } from "./file-pane";
+import { SyncDialog } from "./sync-dialog";
 import type { useTransfers } from "@renderer/lib/use-transfers";
 
 interface DualPaneViewProps {
@@ -22,6 +23,7 @@ export function DualPaneView({ session, transferState }: DualPaneViewProps) {
 
   const [localPath, setLocalPath] = React.useState<string | null>(null);
   const [remotePath, setRemotePath] = React.useState(session.homeDir);
+  const [syncTarget, setSyncTarget] = React.useState<{ localRoot: string; remoteRoot: string } | null>(null);
 
   // Set local path once roots are loaded
   React.useEffect(() => {
@@ -58,6 +60,14 @@ export function DualPaneView({ session, transferState }: DualPaneViewProps) {
     void qc.invalidateQueries({ queryKey: ["local", localPath] });
   }
 
+  function handleSyncFromLocal(entry: FsEntry) {
+    setSyncTarget({ localRoot: entry.path, remoteRoot: remotePath });
+  }
+
+  function handleSyncFromRemote(entry: FsEntry) {
+    setSyncTarget({ localRoot: localPath ?? entry.path, remoteRoot: entry.path });
+  }
+
   if (!localPath) {
     return (
       <div className="h-full flex items-center justify-center">
@@ -67,29 +77,43 @@ export function DualPaneView({ session, transferState }: DualPaneViewProps) {
   }
 
   return (
-    <PanelGroup storageKey="dual-pane" className="h-full">
-      <Panel minSize={200}>
-        <FilePane
-          mode="local"
-          path={localPath}
-          onNavigate={setLocalPath}
-          onUpload={handleUpload}
-          onDownload={handleDownload}
+    <>
+      <PanelGroup storageKey="dual-pane" className="h-full">
+        <Panel minSize={200}>
+          <FilePane
+            mode="local"
+            path={localPath}
+            onNavigate={setLocalPath}
+            onUpload={handleUpload}
+            onDownload={handleDownload}
+            sessionId={session.sessionId}
+            onDropFromRemote={handleDownload}
+            onSyncFolder={handleSyncFromLocal}
+          />
+        </Panel>
+        <Panel minSize={200}>
+          <FilePane
+            mode="remote"
+            path={remotePath}
+            onNavigate={setRemotePath}
+            onUpload={handleUpload}
+            onDownload={handleDownload}
+            sessionId={session.sessionId}
+            onDropFromLocal={handleUpload}
+            onSyncFolder={handleSyncFromRemote}
+          />
+        </Panel>
+      </PanelGroup>
+
+      {syncTarget && (
+        <SyncDialog
+          open={!!syncTarget}
+          onOpenChange={(open) => { if (!open) setSyncTarget(null); }}
           sessionId={session.sessionId}
-          onDropFromRemote={handleDownload}
+          localRoot={syncTarget.localRoot}
+          remoteRoot={syncTarget.remoteRoot}
         />
-      </Panel>
-      <Panel minSize={200}>
-        <FilePane
-          mode="remote"
-          path={remotePath}
-          onNavigate={setRemotePath}
-          onUpload={handleUpload}
-          onDownload={handleDownload}
-          sessionId={session.sessionId}
-          onDropFromLocal={handleUpload}
-        />
-      </Panel>
-    </PanelGroup>
+      )}
+    </>
   );
 }

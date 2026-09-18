@@ -3,7 +3,9 @@
  * Tailwind, matching the exact prop surface the app's views are written against.
  */
 import * as React from "react";
+import { Checkbox as RxCheckbox } from "radix-ui";
 import { cva, type VariantProps } from "class-variance-authority";
+import { CheckIcon } from "lucide-react";
 import { cn } from "../cn";
 
 // ── Text ─────────────────────────────────────────────────────────────────
@@ -138,6 +140,27 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
   ),
 );
 Input.displayName = "Input";
+
+// ── Checkbox ─────────────────────────────────────────────────────────────
+
+export const Checkbox = React.forwardRef<HTMLButtonElement, React.ComponentPropsWithoutRef<typeof RxCheckbox.Root>>(
+  ({ className, ...props }, ref) => (
+    <RxCheckbox.Root
+      ref={ref}
+      className={cn(
+        "flex size-4 items-center justify-center rounded-[3px] border border-field outline-none",
+        "data-[state=checked]:border-accent data-[state=checked]:bg-accent",
+        className,
+      )}
+      {...props}
+    >
+      <RxCheckbox.Indicator>
+        <CheckIcon className="size-3 text-white" />
+      </RxCheckbox.Indicator>
+    </RxCheckbox.Root>
+  ),
+);
+Checkbox.displayName = "Checkbox";
 
 // ── Label ────────────────────────────────────────────────────────────────
 

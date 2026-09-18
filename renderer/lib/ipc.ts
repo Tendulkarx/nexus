@@ -48,6 +48,12 @@ import {
   type TransferProgressEvent,
   type TransferDoneEvent,
   type TransferErrorEvent,
+  type TransferItem,
+  type SyncPlanRequest,
+  type SyncPlanResult,
+  type SyncExecuteRequest,
+  type SyncExecuteResult,
+  type SyncProgressEvent,
   type TerminalDataEvent,
   type TerminalExitEvent,
   type DisplayConnectRequest,
@@ -157,6 +163,16 @@ export const ipc = {
       on<TransferDoneEvent>(IPC.transfer.done, handler),
     onError: (handler: (payload: TransferErrorEvent) => void) =>
       on<TransferErrorEvent>(IPC.transfer.error, handler),
+    onQueued: (handler: (payload: TransferItem) => void) =>
+      on<TransferItem>(IPC.transfer.queued, handler),
+  },
+
+  // Directory sync
+  sync: {
+    plan: (req: SyncPlanRequest) => invoke<SyncPlanResult>(IPC.sync.plan, req),
+    execute: (req: SyncExecuteRequest) => invoke<SyncExecuteResult>(IPC.sync.execute, req),
+    onProgress: (handler: (payload: SyncProgressEvent) => void) =>
+      on<SyncProgressEvent>(IPC.sync.progress, handler),
   },
 
   // Terminal

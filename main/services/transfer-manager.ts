@@ -29,13 +29,29 @@ export class TransferManager {
     localPath: string,
     remotePath: string,
   ): string {
+    // Fire-and-forget; progress and completion flow through events.
+    return this.startTracked(direction, sessionId, localPath, remotePath).transferId;
+  }
+
+  /**
+   * Like `start`, but also hands back a promise that resolves once the
+   * transfer finishes (success or failure) — used by callers that queue
+   * several transfers as a batch (e.g. directory sync) and need to know when
+   * each one is done, while still sharing the same queueing/progress/cancel
+   * machinery and events as a manually-started transfer.
+   */
+  startTracked(
+    direction: TransferDirection,
+    sessionId: string,
+    localPath: string,
+    remotePath: string,
+  ): { transferId: string; done: Promise<{ ok: boolean; message?: string }> } {
     const transferId = randomUUID();
     const controller = new AbortController();
     this.controllers.set(transferId, controller);
 
-    // Fire-and-forget; progress and completion flow through events.
-    void this.run(transferId, direction, sessionId, localPath, remotePath, controller.signal);
-    return transferId;
+    const done = this.run(transferId, direction, sessionId, localPath, remotePath, controller.signal);
+    return { transferId, done };
   }
 
   private async run(
@@ -45,7 +61,7 @@ export class TransferManager {
     localPath: string,
     remotePath: string,
     signal: AbortSignal,
-  ): Promise<void> {
+  ): Promise<{ ok: boolean; message?: string }> {
     const session = sessionManager.get(sessionId);
     let lastEmit = 0;
     let lastBytes = 0;
@@ -74,6 +90,7 @@ export class TransferManager {
         await session.download(remotePath, localPath, onProgress, signal);
       }
       emitToRenderer(IPC.transfer.done, { transferId } satisfies TransferDoneEvent);
+      return { ok: true };
     } catch (err) {
       const message =
         err instanceof TransferCanceledError
@@ -83,6 +100,7 @@ export class TransferManager {
             : "Transfer failed";
       logger.warn("transfer-manager", "Transfer ended with error", { transferId, message });
       emitToRenderer(IPC.transfer.error, { transferId, message } satisfies TransferErrorEvent);
+      return { ok: false, message };
     } finally {
       this.controllers.delete(transferId);
     }

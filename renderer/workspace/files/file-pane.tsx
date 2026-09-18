@@ -35,6 +35,7 @@ interface FilePaneProps {
   sessionId: string;
   onDropFromLocal?: (localPath: string, name: string) => Promise<void>;
   onDropFromRemote?: (remotePath: string, name: string) => Promise<void>;
+  onSyncFolder?: (entry: FsEntry) => void;
 }
 
 function formatSize(bytes: number): string {
@@ -73,6 +74,7 @@ export function FilePane({
   sessionId,
   onDropFromLocal,
   onDropFromRemote,
+  onSyncFolder,
 }: FilePaneProps) {
   const qc = useQueryClient();
   const queryKey = mode === "local" ? ["local", path] : ["remote", sessionId, path];
@@ -243,6 +245,7 @@ export function FilePane({
     const CMD_OPEN = 7;
     const CMD_BULK_TRANSFER = 8;
     const CMD_BULK_DELETE = 9;
+    const CMD_SYNC = 10;
 
     const items: Array<{ label?: string; commandId?: number; type?: "separator" }> = [];
 
@@ -252,6 +255,9 @@ export function FilePane({
     } else {
       if (entry.isDir) {
         items.push({ label: "Open", commandId: CMD_OPEN });
+        if (onSyncFolder) {
+          items.push({ label: "Sync this folder…", commandId: CMD_SYNC });
+        }
       } else {
         items.push({ label: "Quick Look", commandId: CMD_PREVIEW });
         if (isRemote) items.push({ label: "Edit in Default App", commandId: CMD_EDIT });
@@ -296,6 +302,9 @@ export function FilePane({
         break;
       case CMD_BULK_DELETE:
         void handleBulkDelete(Array.from(activeSelection));
+        break;
+      case CMD_SYNC:
+        onSyncFolder?.(entry);
         break;
     }
   }
