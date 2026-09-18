@@ -24,7 +24,7 @@ import {
 import { ipc } from "@renderer/lib/ipc";
 import { setSession } from "@renderer/lib/sessions";
 import { addOpenSession } from "@renderer/lib/open-sessions-store";
-import { NEW_CONNECTION_EVENT } from "@renderer/lib/menu-events";
+import { NEW_CONNECTION_EVENT, NEW_FOLDER_EVENT } from "@renderer/lib/menu-events";
 import type { ConnectionProfileDTO, Folder, Protocol } from "@shared/ipc-contract";
 import { ConnectionForm } from "./connection-form";
 import { QuickConnectBar } from "./quick-connect-bar";
@@ -89,6 +89,12 @@ export function ConnectionManagerView() {
     const handler = () => setShowNewConnection(true);
     window.addEventListener(NEW_CONNECTION_EVENT, handler);
     return () => window.removeEventListener(NEW_CONNECTION_EVENT, handler);
+  }, []);
+
+  React.useEffect(() => {
+    const handler = () => setShowNewFolder(true);
+    window.addEventListener(NEW_FOLDER_EVENT, handler);
+    return () => window.removeEventListener(NEW_FOLDER_EVENT, handler);
   }, []);
 
   const { profiles = [], folders = [] } = connectionsQuery.data ?? {};

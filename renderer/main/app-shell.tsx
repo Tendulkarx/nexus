@@ -13,6 +13,7 @@ import { ipc } from "@renderer/lib/ipc";
 import { NEW_CONNECTION_EVENT } from "@renderer/lib/menu-events";
 import { ConnectionManagerView } from "@renderer/connection-manager/connection-manager-view";
 import { WorkspaceView } from "@renderer/workspace/workspace-view";
+import { CommandPalette } from "@renderer/command-palette/command-palette";
 
 function SessionTab({ sessionId, active }: { sessionId: string; active: boolean }) {
   const session = getSession(sessionId);
@@ -78,7 +79,12 @@ export function AppShell() {
   if (order.length === 0) {
     // No sessions open yet — same full-height connection manager as before,
     // complete with its own drag-region/traffic-light padding.
-    return <ConnectionManagerView />;
+    return (
+      <>
+        <ConnectionManagerView />
+        <CommandPalette />
+      </>
+    );
   }
 
   return (
@@ -115,6 +121,8 @@ export function AppShell() {
           </div>
         ))}
       </div>
+
+      <CommandPalette />
     </div>
   );
 }
