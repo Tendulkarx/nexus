@@ -12,6 +12,9 @@ native/**/build/
 # Vendored from-source FreeRDP build (native/nexus-display-host/scripts/build-freerdp.sh)
 native/**/vendor/
 
+# Agent worktrees (transient, created/removed by the Agent tool)
+.claude/worktrees/
+
 # OS files
 .DS_Store
 Thumbs.db
