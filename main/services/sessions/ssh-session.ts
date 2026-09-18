@@ -131,13 +131,21 @@ async function connectViaJumpHost(
 
 export class SshSession extends BaseSession {
   readonly info: SessionInfo;
+  /** Command(s) to auto-type into each new shell opened on this session, one per line — see SshTerminalService.open(). */
+  readonly onConnectCommand: string | null;
   private sftp: SftpClient;
   private jumpClient: Client | null;
 
-  private constructor(sftp: SftpClient, info: SessionInfo, jumpClient: Client | null = null) {
+  private constructor(
+    sftp: SftpClient,
+    info: SessionInfo,
+    onConnectCommand: string | null,
+    jumpClient: Client | null = null,
+  ) {
     super();
     this.sftp = sftp;
     this.info = info;
+    this.onConnectCommand = onConnectCommand;
     this.jumpClient = jumpClient;
   }
 
@@ -177,6 +185,15 @@ export class SshSession extends BaseSession {
       config.password = secret;
     }
 
+    if (profile.agentForward) {
+      if (process.env.SSH_AUTH_SOCK) {
+        config.agent = process.env.SSH_AUTH_SOCK;
+        config.agentForward = true;
+      } else {
+        logger.warn("ssh", "Agent forwarding requested but SSH_AUTH_SOCK is not set — skipping", { host, port });
+      }
+    }
+
     let jumpClient: Client | null = null;
     if (profile.jumpHost) {
       const jump = await connectViaJumpHost(profile.jumpHost, jumpSecret, host, port);
@@ -203,7 +220,7 @@ export class SshSession extends BaseSession {
       supportsTerminal: true,
       kind: "file",
     };
-    return new SshSession(sftp, info, jumpClient);
+    return new SshSession(sftp, info, profile.onConnectCommand ?? null, jumpClient);
   }
 
   async list(remotePath: string): Promise<DirListing> {

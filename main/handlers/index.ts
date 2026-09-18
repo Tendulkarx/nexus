@@ -9,6 +9,8 @@ import { registerEditHandlers } from "./edit.js";
 import { registerFilesystemHandlers } from "./filesystem.js";
 import { registerPortForwardHandlers } from "./port-forwards.js";
 import { registerSessionHandlers } from "./sessions.js";
+import { registerSnippetHandlers } from "./snippets.js";
+import { registerSshConfigHandlers } from "./ssh-config.js";
 import { registerSyncHandlers } from "./sync.js";
 import { registerTerminalHandlers } from "./terminal.js";
 import { registerTransferHandlers } from "./transfers.js";
@@ -44,6 +46,8 @@ export function registerHandlers(): void {
   registerDisplayHandlers();
   registerSyncHandlers();
   registerPortForwardHandlers();
+  registerSshConfigHandlers();
+  registerSnippetHandlers();
 
   logger.info("handlers", "✓ IPC handlers registered");
 }

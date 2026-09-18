@@ -5,7 +5,8 @@ import "@xterm/xterm/css/xterm.css";
 import { ipc } from "@renderer/lib/ipc";
 import type { SessionInfo } from "@shared/ipc-contract";
 import { Text, Button } from "@renderer/lib/ui";
-import { TerminalIcon, RefreshCwIcon } from "lucide-react";
+import { TerminalIcon, RefreshCwIcon, ListIcon } from "lucide-react";
+import { SnippetLibraryDialog } from "./snippet-library-dialog";
 
 interface TerminalPaneProps {
   session: SessionInfo;
@@ -22,6 +23,7 @@ export function TerminalPane({ session, isVisible }: TerminalPaneProps) {
   const [isClosed, setIsClosed] = React.useState(false);
   const [exitCode, setExitCode] = React.useState<number | null>(null);
   const [isInitializing, setIsInitializing] = React.useState(true);
+  const [showSnippets, setShowSnippets] = React.useState(false);
 
   const initTerminal = React.useCallback(async () => {
     const container = containerRef.current;
@@ -152,6 +154,17 @@ export function TerminalPane({ session, isVisible }: TerminalPaneProps) {
         <Text variant="small" color="secondary" className="flex-1">
           {session.username}@{session.host}
         </Text>
+        {!isClosed && !isInitializing && (
+          <Button
+            variant="transparent"
+            size="small"
+            iconOnly
+            onClick={() => setShowSnippets(true)}
+            aria-label="Run a snippet"
+          >
+            <ListIcon className="size-3.5 text-tertiary" />
+          </Button>
+        )}
         {!isClosed && (
           <Button
             variant="transparent"
@@ -185,6 +198,15 @@ export function TerminalPane({ session, isVisible }: TerminalPaneProps) {
           </div>
         )}
       </div>
+
+      <SnippetLibraryDialog
+        open={showSnippets}
+        onOpenChange={setShowSnippets}
+        onRun={(command) => {
+          if (!terminalIdRef.current) return;
+          ipc.terminal.send({ terminalId: terminalIdRef.current, data: `${command}\n` });
+        }}
+      />
     </div>
   );
 }

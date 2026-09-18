@@ -60,6 +60,10 @@ export interface ConnectionProfile {
   secret?: string | null;
   /** Only meaningful for sftp/ssh — SshSession tunnels the connection through this host when set. */
   jumpHost?: JumpHost | null;
+  /** sftp/ssh only — forward SSH_AUTH_SOCK so remote commands (git pull, sudo chains) can use local agent keys. */
+  agentForward?: boolean;
+  /** sftp/ssh only — command(s) auto-typed into the terminal once a shell opens on this connection, one per line. */
+  onConnectCommand?: string | null;
 }
 
 /** Renderer-facing profile: secret stripped, replaced by a boolean flag. */
@@ -403,6 +407,53 @@ export interface PortForwardListRequest { sessionId: string }
 // event↓ portForward:update { rule }  (connection count/bytes/state changed)
 export interface PortForwardUpdateEvent { rule: PortForwardRule }
 
+// ── SSH config import (invoke) ──────────────────────────────────────────────
+//
+// Read-only: parses ~/.ssh/config into candidate hosts for the connection
+// manager's import picker. Creating profiles from the ones the user selects
+// goes through the existing connections:create channel — there is no
+// separate "create from ssh config" channel.
+
+/** One Host block parsed from ~/.ssh/config (see main/services/ssh-config-parser.ts). */
+export interface SshConfigHost {
+  alias: string;
+  hostName?: string;
+  port?: number;
+  user?: string;
+  /** Absolute path, tilde-expanded. */
+  identityFile?: string;
+  proxyJump?: string;
+}
+
+// sshConfig:list → SshConfigListResult
+export interface SshConfigListResult {
+  hosts: SshConfigHost[];
+}
+
+// ── Command snippets (invoke) ───────────────────────────────────────────────
+
+export interface CommandSnippet {
+  id: string;
+  name: string;
+  command: string;
+  tags: string[];
+  /** epoch ms */
+  createdAt: number;
+}
+
+export type SnippetInput = Omit<CommandSnippet, "id" | "createdAt">;
+
+// snippet:list                   → SnippetsListResult
+// snippet:create { input }       → CommandSnippet
+// snippet:update { id, patch }   → CommandSnippet
+// snippet:delete { id }          → OkResult
+export interface SnippetsListResult {
+  snippets: CommandSnippet[];
+}
+export interface SnippetCreateRequest { input: SnippetInput }
+export interface SnippetUpdateRequest { id: string; patch: Partial<SnippetInput> }
+export interface SnippetDeleteRequest { id: string }
+
 // ── Terminal (invoke + events) ────────────────────────────────────────────────
 
 // terminal:open   { sessionId, cols, rows } → { terminalId }
@@ -495,5 +546,14 @@ export const IPC = {
     resize: "display:resize",
     disconnect: "display:disconnect",
     status: "display:status",
+  },
+  sshConfig: {
+    list: "sshConfig:list",
+  },
+  snippet: {
+    list: "snippet:list",
+    create: "snippet:create",
+    update: "snippet:update",
+    delete: "snippet:delete",
   },
 } as const;

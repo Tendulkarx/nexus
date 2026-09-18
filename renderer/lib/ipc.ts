@@ -67,6 +67,12 @@ import {
   type PortForwardListRequest,
   type PortForwardRule,
   type PortForwardUpdateEvent,
+  type SshConfigListResult,
+  type SnippetsListResult,
+  type SnippetCreateRequest,
+  type SnippetUpdateRequest,
+  type SnippetDeleteRequest,
+  type CommandSnippet,
 } from "@shared/ipc-contract";
 
 function invoke<TResult>(channel: string, payload?: unknown): Promise<TResult> {
@@ -216,5 +222,18 @@ export const ipc = {
     list: (req: PortForwardListRequest) => invoke<PortForwardRule[]>(IPC.portForward.list, req),
     onUpdate: (handler: (payload: PortForwardUpdateEvent) => void) =>
       on<PortForwardUpdateEvent>(IPC.portForward.update, handler),
+  },
+
+  // SSH config import
+  sshConfig: {
+    list: () => invoke<SshConfigListResult>(IPC.sshConfig.list),
+  },
+
+  // Command snippet library
+  snippet: {
+    list: () => invoke<SnippetsListResult>(IPC.snippet.list),
+    create: (req: SnippetCreateRequest) => invoke<CommandSnippet>(IPC.snippet.create, req),
+    update: (req: SnippetUpdateRequest) => invoke<CommandSnippet>(IPC.snippet.update, req),
+    delete: (req: SnippetDeleteRequest) => invoke<OkResult>(IPC.snippet.delete, req),
   },
 } as const;

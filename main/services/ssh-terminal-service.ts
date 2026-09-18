@@ -38,6 +38,12 @@ export class SshTerminalService {
     channel.on("close", () => this.handleExit(terminalId, null));
     channel.on("exit", (code: number | null) => this.handleExit(terminalId, code));
 
+    if (session.onConnectCommand) {
+      for (const line of session.onConnectCommand.split("\n").map((l) => l.trim()).filter(Boolean)) {
+        channel.write(`${line}\n`);
+      }
+    }
+
     logger.info("ssh-terminal", "Opened terminal", { terminalId, sessionId });
     return terminalId;
   }
