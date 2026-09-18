@@ -10,11 +10,23 @@ import {
   SelectItem,
   Field,
   FieldSet,
-} from "@glaze/core/components";
+  toast,
+} from "@renderer/lib/ui";
 import type { ConnectionProfileDTO, Folder, ConnectionInput, Protocol, AuthType } from "@shared/ipc-contract";
 import { ipc } from "@renderer/lib/ipc";
-import { FolderOpenIcon } from "lucide-react";
-import { toast } from "@glaze/core/components";
+import { FolderOpenIcon, CheckIcon } from "lucide-react";
+import { cn } from "@renderer/lib/cn";
+
+const COLOR_SWATCHES = [
+  "#ef4444", // red
+  "#f97316", // orange
+  "#eab308", // yellow
+  "#22c55e", // green
+  "#06b6d4", // cyan
+  "#3b82f6", // blue
+  "#a855f7", // purple
+  "#ec4899", // pink
+];
 
 interface ConnectionFormProps {
   editProfile?: ConnectionProfileDTO;
@@ -28,6 +40,7 @@ const DEFAULT_PORTS: Record<Protocol, number> = {
   ftp: 21,
   ftps: 990,
   ssh: 22,
+  rdp: 3389,
 };
 
 export function ConnectionForm({ editProfile, folders, onSave, onCancel }: ConnectionFormProps) {
@@ -42,6 +55,7 @@ export function ConnectionForm({ editProfile, folders, onSave, onCancel }: Conne
   const [folderId, setFolderId] = React.useState(editProfile?.folderId ?? "");
   const [defaultRemotePath, setDefaultRemotePath] = React.useState(editProfile?.defaultRemotePath ?? "");
   const [tags, setTags] = React.useState(editProfile?.tags.join(", ") ?? "");
+  const [color, setColor] = React.useState<string | null>(editProfile?.color ?? null);
 
   // Auto-update port when protocol changes
   React.useEffect(() => {
@@ -63,7 +77,7 @@ export function ConnectionForm({ editProfile, folders, onSave, onCancel }: Conne
         folderId: folderId || null,
         defaultRemotePath: defaultRemotePath || null,
         tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
-        color: null,
+        color,
         secret: secret || undefined,
       };
       if (editProfile) {
@@ -79,7 +93,7 @@ export function ConnectionForm({ editProfile, folders, onSave, onCancel }: Conne
   });
 
   async function pickKeyFile() {
-    const result = await window.glazeAPI.dialog.showOpenDialog({
+    const result = await window.nexusAPI.dialog.showOpenDialog({
       title: "Select Private Key",
       properties: ["openFile"],
     });
@@ -112,6 +126,7 @@ export function ConnectionForm({ editProfile, folders, onSave, onCancel }: Conne
                 <SelectItem value="ftp">FTP</SelectItem>
                 <SelectItem value="ftps">FTPS</SelectItem>
                 <SelectItem value="ssh">SSH</SelectItem>
+                <SelectItem value="rdp">RDP (Remote Desktop)</SelectItem>
               </SelectContent>
             </Select>
           </Field>
@@ -226,6 +241,34 @@ export function ConnectionForm({ editProfile, folders, onSave, onCancel }: Conne
               value={tags}
               onChange={(e) => setTags(e.target.value)}
             />
+          </Field>
+          <Field label="Color" orientation="horizontal">
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setColor(null)}
+                aria-label="No color"
+                className={cn(
+                  "size-5 rounded-full border border-separator flex items-center justify-center",
+                  color === null && "ring-2 ring-accent ring-offset-1 ring-offset-bg",
+                )}
+              />
+              {COLOR_SWATCHES.map((swatch) => (
+                <button
+                  key={swatch}
+                  type="button"
+                  onClick={() => setColor(swatch)}
+                  aria-label={`Color ${swatch}`}
+                  className={cn(
+                    "size-5 rounded-full flex items-center justify-center",
+                    color === swatch && "ring-2 ring-accent ring-offset-1 ring-offset-bg",
+                  )}
+                  style={{ backgroundColor: swatch }}
+                >
+                  {color === swatch && <CheckIcon className="size-3 text-white" />}
+                </button>
+              ))}
+            </div>
           </Field>
         </FieldSet>
       </div>

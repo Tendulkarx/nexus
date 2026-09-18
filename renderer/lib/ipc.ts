@@ -1,5 +1,5 @@
 /**
- * Typed IPC wrapper — thin layer over window.glazeAPI.glaze.ipc using the
+ * Typed IPC wrapper — thin layer over window.nexusAPI.ipc using the
  * IPC contract types. Import `ipc` for invocations and subscriptions.
  */
 
@@ -24,12 +24,18 @@ import {
   type RemoteMkdirRequest,
   type RemoteRenameRequest,
   type RemoteDeleteRequest,
+  type RemoteReadFileRequest,
   type LocalListRequest,
   type LocalMkdirRequest,
   type LocalRenameRequest,
   type LocalDeleteRequest,
+  type LocalReadFileRequest,
   type LocalRoots,
   type DirListing,
+  type ReadFileResult,
+  type EditOpenRequest,
+  type EditSavedEvent,
+  type EditErrorEvent,
   type TransferUploadRequest,
   type TransferDownloadRequest,
   type TransferCancelRequest,
@@ -44,17 +50,21 @@ import {
   type TransferErrorEvent,
   type TerminalDataEvent,
   type TerminalExitEvent,
+  type DisplayConnectRequest,
+  type DisplayResizeRequest,
+  type DisplayDisconnectRequest,
+  type DisplayStatusEvent,
 } from "@shared/ipc-contract";
 
 function invoke<TResult>(channel: string, payload?: unknown): Promise<TResult> {
-  return window.glazeAPI.glaze.ipc.invoke<TResult>(channel, payload);
+  return window.nexusAPI.ipc.invoke<TResult>(channel, payload);
 }
 
 function on<TPayload>(
   channel: string,
   handler: (payload: TPayload) => void,
 ): () => void {
-  return window.glazeAPI.glaze.ipc.on(channel, (_event, payload) => {
+  return window.nexusAPI.ipc.on(channel, (_event, payload) => {
     handler(payload as TPayload);
   });
 }
@@ -105,6 +115,8 @@ export const ipc = {
       invoke<OkResult>(IPC.remote.rename, req),
     delete: (req: RemoteDeleteRequest) =>
       invoke<OkResult>(IPC.remote.delete, req),
+    readFile: (req: RemoteReadFileRequest) =>
+      invoke<ReadFileResult>(IPC.remote.readFile, req),
   },
 
   // Local FS
@@ -118,6 +130,17 @@ export const ipc = {
       invoke<OkResult>(IPC.local.rename, req),
     delete: (req: LocalDeleteRequest) =>
       invoke<OkResult>(IPC.local.delete, req),
+    readFile: (req: LocalReadFileRequest) =>
+      invoke<ReadFileResult>(IPC.local.readFile, req),
+  },
+
+  // Remote edit round-trip
+  edit: {
+    open: (req: EditOpenRequest) => invoke<OkResult>(IPC.edit.open, req),
+    onSaved: (handler: (payload: EditSavedEvent) => void) =>
+      on<EditSavedEvent>(IPC.edit.saved, handler),
+    onError: (handler: (payload: EditErrorEvent) => void) =>
+      on<EditErrorEvent>(IPC.edit.error, handler),
   },
 
   // Transfers
@@ -145,10 +168,19 @@ export const ipc = {
     close: (req: TerminalCloseRequest) =>
       invoke<OkResult>(IPC.terminal.close, req),
     send: (payload: TerminalInputEvent) =>
-      window.glazeAPI.glaze.ipc.send(IPC.terminal.input, payload),
+      window.nexusAPI.ipc.send(IPC.terminal.input, payload),
     onData: (handler: (payload: TerminalDataEvent) => void) =>
       on<TerminalDataEvent>(IPC.terminal.data, handler),
     onExit: (handler: (payload: TerminalExitEvent) => void) =>
       on<TerminalExitEvent>(IPC.terminal.exit, handler),
+  },
+
+  // Remote Desktop (rdp) — no pixel data crosses IPC, see ipc-contract.ts
+  display: {
+    connect: (req: DisplayConnectRequest) => invoke<OkResult>(IPC.display.connect, req),
+    resize: (req: DisplayResizeRequest) => invoke<OkResult>(IPC.display.resize, req),
+    disconnect: (req: DisplayDisconnectRequest) => invoke<OkResult>(IPC.display.disconnect, req),
+    onStatus: (handler: (payload: DisplayStatusEvent) => void) =>
+      on<DisplayStatusEvent>(IPC.display.status, handler),
   },
 } as const;

@@ -1,10 +1,10 @@
-import { BrowserWindow, logger } from "@glaze/core/backend";
+import { BrowserWindow } from "electron";
 import { getPreloadPath, getWindowUrl } from "./window-paths.js";
+import { logger } from "../logger.js";
 
 let settingsWindow: BrowserWindow | null = null;
 
 export async function openSettingsWindow(): Promise<void> {
-  // If window exists and is not destroyed, just show it
   if (settingsWindow && !settingsWindow.isDestroyed()) {
     logger.debug("settings", "Settings window already exists, showing it");
     settingsWindow.show();
@@ -14,7 +14,6 @@ export async function openSettingsWindow(): Promise<void> {
   logger.info("settings", "Creating settings window");
 
   settingsWindow = new BrowserWindow({
-    windowKey: "settings",
     width: 520,
     height: 300,
     minWidth: 400,
@@ -22,8 +21,16 @@ export async function openSettingsWindow(): Promise<void> {
     title: "Settings",
     show: false,
     center: true,
+    titleBarStyle: "hiddenInset",
+    trafficLightPosition: { x: 16, y: 16 },
+    vibrancy: "sidebar",
+    visualEffectState: "active",
+    backgroundColor: "#00000000",
+    transparent: true,
     webPreferences: {
       preload: getPreloadPath(),
+      contextIsolation: true,
+      nodeIntegration: false,
     },
   });
 

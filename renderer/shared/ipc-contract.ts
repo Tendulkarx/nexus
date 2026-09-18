@@ -5,13 +5,14 @@
  * from both `renderer/` and `main/`. They document every channel's request/response shape.
  *
  * Channels are grouped below. invoke = ipcMain.handle (request/response via
- * window.glazeAPI.glaze.ipc.invoke). event↓ = backend→renderer via webContents.send
- * (subscribe with glaze.ipc.on). event↑ = renderer→backend via glaze.ipc.send (ipcMain.on).
+ * window.nexusAPI.ipc.invoke). event↓ = backend→renderer via webContents.send
+ * (subscribe with ipc.on). event↑ = renderer→backend via ipc.send (ipcMain.on).
  */
 
 // ── Domain models ────────────────────────────────────────────────────────
 
-export type Protocol = "sftp" | "ftp" | "ftps" | "ssh";
+/** sftp/ftp/ftps/ssh are file-transfer protocols (browse + optional terminal); rdp is a display protocol (renders a remote desktop, no file browsing — see SessionInfo.kind). */
+export type Protocol = "sftp" | "ftp" | "ftps" | "ssh" | "rdp";
 export type AuthType = "password" | "key";
 
 /** A saved connection profile, as persisted on disk (backend-only — includes secret). */
@@ -124,9 +125,12 @@ export interface SessionInfo {
   protocol: Protocol;
   host: string;
   username: string;
+  /** Empty string for display (rdp) sessions — they have no filesystem. */
   homeDir: string;
   /** true when this protocol supports an interactive shell (sftp/ssh). */
   supportsTerminal: boolean;
+  /** "file" (sftp/ftp/ftps/ssh — browse + optional terminal) or "display" (rdp — embedded remote-desktop tab, no file/terminal tabs). */
+  kind: "file" | "display";
 }
 
 // session:connect    SessionConnectRequest → SessionInfo
@@ -134,28 +138,84 @@ export interface SessionInfo {
 // session:list                             → SessionInfo[]
 export interface SessionDisconnectRequest { sessionId: string }
 
+// ── Remote Desktop (rdp — invoke + events) ──────────────────────────────
+//
+// Unlike file sessions, a display session's actual pixels are rendered by a
+// native macOS view composited directly into the BrowserWindow by the main
+// process (native/nexus-display-host addon) — NOT drawn by the renderer.
+// These channels only tell main where to position/size that native view and
+// when to tear it down; there is no frame data crossing IPC.
+
+/** Bounds (in the renderer's device-independent CSS pixels) of the placeholder the native view should be positioned/sized to cover. */
+export interface DisplayBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+// display:connect  { sessionId, bounds } → OkResult   (creates + attaches the native child view, starts the RDP session)
+// display:resize   { sessionId, bounds } → OkResult   (repositions/resizes the native child view — called on every ResizeObserver tick)
+// display:disconnect { sessionId }       → OkResult   (tears down the native view + session)
+// display:status↓ { sessionId, state, message? }  (backend→renderer: "connecting" | "connected" | "error" | "closed")
+
+export interface DisplayConnectRequest { sessionId: string; bounds: DisplayBounds }
+export interface DisplayResizeRequest { sessionId: string; bounds: DisplayBounds }
+export interface DisplayDisconnectRequest { sessionId: string }
+export type DisplaySessionState = "connecting" | "connected" | "error" | "closed";
+export interface DisplayStatusEvent {
+  sessionId: string;
+  state: DisplaySessionState;
+  message?: string;
+}
+
 // ── Remote FS (invoke — all carry sessionId) ────────────────────────────────
 
-// remote:list   { sessionId, path }              → DirListing
-// remote:mkdir  { sessionId, path }              → OkResult
-// remote:rename { sessionId, from, to }          → OkResult
-// remote:delete { sessionId, path, isDir }       → OkResult
+// remote:list     { sessionId, path }            → DirListing
+// remote:mkdir    { sessionId, path }            → OkResult
+// remote:rename   { sessionId, from, to }        → OkResult
+// remote:delete   { sessionId, path, isDir }     → OkResult
+// remote:readFile { sessionId, path }            → ReadFileResult
 export interface RemoteListRequest { sessionId: string; path: string }
 export interface RemoteMkdirRequest { sessionId: string; path: string }
 export interface RemoteRenameRequest { sessionId: string; from: string; to: string }
 export interface RemoteDeleteRequest { sessionId: string; path: string; isDir: boolean }
+export interface RemoteReadFileRequest { sessionId: string; path: string }
+
+/** Text preview of a file, size-capped. Binary files return isBinary=true. */
+export interface ReadFileResult {
+  text: string;
+  size: number;
+  /** true when the file exceeded the preview cap and text is partial */
+  truncated: boolean;
+  /** true when the content looks binary (not shown as text) */
+  isBinary: boolean;
+}
 
 // ── Local FS (invoke) ────────────────────────────────────────────────────────
 
-// local:list   { path? }              → DirListing  (path omitted → home)
+// local:list     { path? }            → DirListing  (path omitted → home)
 // local:roots                         → LocalRoots
-// local:mkdir  { path }               → OkResult
-// local:rename { from, to }           → OkResult
-// local:delete { path, isDir }        → OkResult
+// local:mkdir    { path }             → OkResult
+// local:rename   { from, to }         → OkResult
+// local:delete   { path, isDir }      → OkResult
+// local:readFile { path }             → ReadFileResult
 export interface LocalListRequest { path?: string }
 export interface LocalMkdirRequest { path: string }
 export interface LocalRenameRequest { from: string; to: string }
 export interface LocalDeleteRequest { path: string; isDir: boolean }
+export interface LocalReadFileRequest { path: string }
+
+// ── Remote edit round-trip (invoke + events) ────────────────────────────────
+
+// edit:open { sessionId, path } → OkResult
+//   Downloads the remote file to a temp path, opens it in the OS default editor,
+//   watches for saves, and re-uploads to the server on each save.
+export interface EditOpenRequest { sessionId: string; path: string }
+// event↓ edit:saved { path, name }
+export interface EditSavedEvent { path: string; name: string }
+// event↓ edit:error { path, message }
+export interface EditErrorEvent { path: string; message: string }
 
 // ── Transfers (invoke + events) ──────────────────────────────────────────────
 
@@ -237,6 +297,7 @@ export const IPC = {
     mkdir: "remote:mkdir",
     rename: "remote:rename",
     delete: "remote:delete",
+    readFile: "remote:readFile",
   },
   local: {
     list: "local:list",
@@ -244,6 +305,12 @@ export const IPC = {
     mkdir: "local:mkdir",
     rename: "local:rename",
     delete: "local:delete",
+    readFile: "local:readFile",
+  },
+  edit: {
+    open: "edit:open",
+    saved: "edit:saved",
+    error: "edit:error",
   },
   transfer: {
     upload: "transfer:upload",
@@ -260,5 +327,11 @@ export const IPC = {
     input: "terminal:input",
     data: "terminal:data",
     exit: "terminal:exit",
+  },
+  display: {
+    connect: "display:connect",
+    resize: "display:resize",
+    disconnect: "display:disconnect",
+    status: "display:status",
   },
 } as const;

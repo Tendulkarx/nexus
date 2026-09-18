@@ -5,13 +5,59 @@
 import * as fsp from "fs/promises";
 import * as posix from "path/posix";
 
+import { dialog } from "electron";
 import SftpClient from "ssh2-sftp-client";
 
 import { BaseSession, TransferCanceledError, type ProgressCallback } from "./base-session.js";
+import { fingerprintKey, knownHostsStore } from "../known-hosts-store.js";
+import { logger } from "../../logger.js";
 
 import type { ConnectionProfile } from "@shared/ipc-contract";
 import type { DirListing, FsEntry, SessionInfo } from "@shared/ipc-contract";
 import type { ClientChannel, ConnectConfig } from "ssh2";
+
+/**
+ * Trust-on-first-use host key verification. First connection to a host:port
+ * records its key fingerprint; later connections compare against it and
+ * block (with a native warning dialog) on mismatch, since that indicates a
+ * possible MITM attack or a reinstalled/rotated server host key.
+ */
+async function verifyHostKey(host: string, port: number, key: Buffer): Promise<boolean> {
+  const fingerprint = fingerprintKey(key);
+  const stored = await knownHostsStore.get(host, port);
+
+  if (!stored) {
+    await knownHostsStore.trust(host, port, fingerprint);
+    logger.info("ssh", "Trusting new host key on first use", { host, port });
+    return true;
+  }
+
+  if (stored === fingerprint) {
+    return true;
+  }
+
+  logger.warn("ssh", "Host key mismatch — possible MITM or reinstalled server", { host, port });
+  const result = await dialog.showMessageBox({
+    type: "warning",
+    title: "Host Key Changed",
+    message: `The host key for ${host}:${port} has changed since you last connected.`,
+    detail:
+      "This could mean the server was reinstalled or its key was rotated — or it could mean someone is " +
+      "intercepting your connection. Only continue if you're sure this is expected.",
+    buttons: ["Cancel", "Connect Anyway"],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+  });
+
+  if (result.response === 1) {
+    await knownHostsStore.trust(host, port, fingerprint);
+    logger.warn("ssh", "User accepted new host key after mismatch warning", { host, port });
+    return true;
+  }
+
+  return false;
+}
 
 export class SshSession extends BaseSession {
   readonly info: SessionInfo;
@@ -29,12 +75,22 @@ export class SshSession extends BaseSession {
     secret: string | null,
   ): Promise<SshSession> {
     const sftp = new SftpClient(sessionId);
+    const host = profile.host;
+    const port = profile.port || 22;
     const config: ConnectConfig = {
-      host: profile.host,
-      port: profile.port || 22,
+      host,
+      port,
       username: profile.username,
       readyTimeout: 20_000,
       keepaliveInterval: 15_000,
+      hostVerifier: (key: Buffer, verify: (ok: boolean) => void) => {
+        verifyHostKey(host, port, key)
+          .then(verify)
+          .catch((err) => {
+            logger.error("ssh", "Host key verification failed", err);
+            verify(false);
+          });
+      },
     };
 
     if (profile.authType === "key") {
@@ -60,6 +116,7 @@ export class SshSession extends BaseSession {
       username: profile.username,
       homeDir: homeDir || ".",
       supportsTerminal: true,
+      kind: "file",
     };
     return new SshSession(sftp, info);
   }
@@ -124,6 +181,26 @@ export class SshSession extends BaseSession {
         },
       }),
     );
+  }
+
+  async readFile(remotePath: string, maxBytes: number): Promise<Buffer> {
+    // Bounded stream read so a huge remote file never loads fully into memory.
+    const stream = this.sftp.createReadStream(remotePath);
+    const chunks: Buffer[] = [];
+    let total = 0;
+    for await (const chunk of stream as AsyncIterable<Buffer>) {
+      chunks.push(chunk);
+      total += chunk.length;
+      if (total >= maxBytes) {
+        stream.destroy();
+        break;
+      }
+    }
+    return Buffer.concat(chunks).subarray(0, maxBytes);
+  }
+
+  async putFile(localPath: string, remotePath: string): Promise<void> {
+    await this.sftp.fastPut(localPath, remotePath);
   }
 
   /** Normalizes the "throw from step callback" abort into a TransferCanceledError. */

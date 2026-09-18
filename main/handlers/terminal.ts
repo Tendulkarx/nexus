@@ -3,7 +3,7 @@
  * keystrokes arrive fire-and-forget on terminal:input; output streams back via
  * terminal:data events (see SshTerminalService).
  */
-import { ipcMain } from "@glaze/core/backend";
+import { ipcMain } from "electron";
 
 import { asRecord, reqNumber, reqString } from "./validate.js";
 import { sshTerminalService } from "../services/ssh-terminal-service.js";

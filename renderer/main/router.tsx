@@ -4,15 +4,10 @@ import {
   createRoute,
   createRouter,
 } from "@tanstack/react-router";
-import { HomeView } from "./home-view";
+import { AppShell } from "./app-shell";
 import { RootView } from "./root-view";
 import { QueryClient } from "@tanstack/react-query";
-import { ErrorBoundaryView } from "@glaze/core/components";
-import { lazy } from "react";
-
-const WorkspaceView = lazy(() =>
-  import("@renderer/workspace/workspace-view").then((m) => ({ default: m.WorkspaceView })),
-);
+import { ErrorBoundaryView } from "@renderer/lib/ui";
 
 const rootRoute = createRootRouteWithContext<{
   queryClient: QueryClient;
@@ -32,22 +27,13 @@ const rootRoute = createRootRouteWithContext<{
 const homeRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
-  component: HomeView,
+  component: AppShell,
   staticData: {
-    title: "Connection Manager",
+    title: "Nexus",
   },
 });
 
-const workspaceRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/workspace/$sessionId",
-  component: WorkspaceView,
-  staticData: {
-    title: "Workspace",
-  },
-});
-
-const routeTree = rootRoute.addChildren([homeRoute, workspaceRoute]);
+const routeTree = rootRoute.addChildren([homeRoute]);
 
 const queryClient = new QueryClient();
 

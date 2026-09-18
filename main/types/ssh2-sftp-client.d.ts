@@ -3,6 +3,7 @@
  * Only the surface Nexus uses is declared.
  */
 declare module "ssh2-sftp-client" {
+  import type { Readable } from "stream";
   import type { Client as SSH2Client, ConnectConfig } from "ssh2";
 
   export interface FileInfo {
@@ -35,6 +36,8 @@ declare module "ssh2-sftp-client" {
     connect(config: ConnectConfig): Promise<unknown>;
     list(remotePath: string): Promise<FileInfo[]>;
     exists(remotePath: string): Promise<false | "d" | "-" | "l">;
+    stat(remotePath: string): Promise<{ size: number; isDirectory: boolean; isFile: boolean }>;
+    createReadStream(remotePath: string, options?: Record<string, unknown>): Readable;
     cwd(): Promise<string>;
     realPath(remotePath: string): Promise<string>;
     fastGet(remotePath: string, localPath: string, options?: TransferOptions): Promise<string>;

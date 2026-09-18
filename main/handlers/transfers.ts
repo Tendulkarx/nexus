@@ -2,7 +2,7 @@
  * IPC handlers for file transfers. Start returns a transferId immediately;
  * progress/done/error stream back as events (see TransferManager).
  */
-import { ipcMain } from "@glaze/core/backend";
+import { ipcMain } from "electron";
 
 import { asRecord, reqString } from "./validate.js";
 import { transferManager } from "../services/transfer-manager.js";

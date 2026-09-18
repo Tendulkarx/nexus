@@ -1,46 +1,33 @@
-// Main process entry point - Node.js backend for Glaze app
-//
-// The glaze CLI runtime automatically handles all framework wiring (IPC server,
-// native bridge, lifecycle, signal handlers) before this file runs.
-// This entry point uses only APIs.
-
+// Main process entry point. Registers app-feature IPC handlers plus a small
+// set of "native bridge" handlers (dialog, shell, nativeTheme, Menu) that
+// Electron doesn't auto-wire but that the preload/renderer actually call.
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
 
-import { app, BrowserWindow, Menu, logger, initDevToolsButtonState } from "@glaze/core/backend";
+import { app, BrowserWindow, Menu, shell, dialog, nativeTheme, ipcMain } from "electron";
+import type { MenuItemConstructorOptions } from "electron";
+// electron-updater ships as CommonJS with no real named exports — under
+// Node ESM ("type": "module" in package.json) it must be imported via its
+// default export and destructured, not `import { autoUpdater } from ...`.
+import electronUpdaterPkg from "electron-updater";
+const { autoUpdater } = electronUpdaterPkg;
 
 import { registerHandlers } from "./handlers/index.js";
 import { getPreloadPath, getWindowUrl } from "./windows/window-paths.js";
 import { openSettingsWindow } from "./windows/settings-window.js";
+import { editManager } from "./services/edit-manager.js";
 import { sessionManager } from "./services/session-manager.js";
 import { sshTerminalService } from "./services/ssh-terminal-service.js";
 import { transferManager } from "./services/transfer-manager.js";
+import { logger } from "./logger.js";
 
-// Get directory paths
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // ── IPC Handlers ──────────────────────────────────────────────────────
-// ipcMain is already wired to the IPC server by the runtime bootstrap.
 registerHandlers();
-
-// ── Dev-only parity harness ───────────────────────────────────────────
-// The parity autotest lives in main/dev/, which is excluded from scaffolded
-// apps. The build (build-backend) defines GLAZE_DEV_HARNESS="1" only when that
-// directory is present, so esbuild dead-code-eliminates this block — and never
-// resolves the missing module — for user apps. A no-op unless a scenario env var
-// is set even in the template.
-type DevHarness = {
-  applyParityScenarioStartup(): void;
-  runParityAutotestIfRequested(): Promise<void>;
-};
-let devHarness: DevHarness | null = null;
-if (process.env.GLAZE_DEV_HARNESS === "1") {
-  // @ts-ignore dev-only harness; present only in the template, excluded from scaffolded apps
-  devHarness = (await import("./dev/parity-autotest.js")) as DevHarness;
-  devHarness.applyParityScenarioStartup();
-}
+registerNativeBridgeHandlers();
 
 // ── State ─────────────────────────────────────────────────────────────
 let mainWindow: BrowserWindow | null = null;
@@ -52,90 +39,61 @@ async function createMainWindow() {
     return;
   }
 
-  // Read display name from package.json
-  // In production: __dirname = build/main, package.json is at ../../package.json
+  // Read display name from package.json (out/main/index.js -> ../../package.json)
   const packageJsonPath = path.join(__dirname, "..", "..", "package.json");
 
   const minWindowWidth = 720;
   const minWindowHeight = 520;
   const windowWidth = 1200;
   const windowHeight = 800;
-  let windowTitle = "Glaze App";
+  let windowTitle = "Nexus";
 
   try {
     if (fs.existsSync(packageJsonPath)) {
       const packageJson = JSON.parse(await fs.promises.readFile(packageJsonPath, "utf-8"));
-      windowTitle = packageJson.productName || packageJson.appConfig?.displayName || windowTitle;
+      windowTitle = packageJson.productName || windowTitle;
     }
   } catch {
     // Use defaults
   }
 
-  // Create main window
-  const browserWindowStartTime = Date.now();
-  logger.info("main", "⏱️ [COLD_START] Creating BrowserWindow", {
-    timestamp: new Date().toISOString(),
-  });
-
   mainWindow = new BrowserWindow({
-    windowKey: "main", // Stable key for frame persistence
     width: windowWidth,
     height: windowHeight,
     minWidth: minWindowWidth,
     minHeight: minWindowHeight,
     title: windowTitle,
-    show: false, // Don't show until WebView is ready (prevents flickering)
+    show: false, // Don't show until ready-to-show (prevents flickering)
+    // The renderer CSS (main-window.html's translucent --background, the
+    // `.drag-region`/`data-toolbar` traffic-light-aware layout) expects a
+    // hidden-title-bar, vibrancy-backed window rather than Electron's plain
+    // default titled window.
+    titleBarStyle: "hiddenInset",
+    trafficLightPosition: { x: 16, y: 16 },
+    vibrancy: "sidebar",
+    visualEffectState: "active",
+    backgroundColor: "#00000000",
+    transparent: true,
     webPreferences: {
       preload: getPreloadPath(),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true, // preload only uses contextBridge/ipcRenderer/webUtils — no Node built-ins needed
     },
   });
 
-  const browserWindowEndTime = Date.now();
-  logger.info("main", "⏱️ [COLD_START] BrowserWindow constructor completed", {
-    timestamp: new Date().toISOString(),
-    duration_ms: browserWindowEndTime - browserWindowStartTime,
-  });
-
-  // Wait for ready-to-show event before showing window (prevents flickering)
   mainWindow.once("ready-to-show", () => {
-    const showStartTime = Date.now();
-    logger.info("main", "⏱️ [COLD_START] ready-to-show event received, showing window", {
-      timestamp: new Date().toISOString(),
-    });
-
     mainWindow?.show();
-
-    const showEndTime = Date.now();
-    logger.info("main", "⏱️ [COLD_START] Window shown", {
-      timestamp: new Date().toISOString(),
-      duration_ms: showEndTime - showStartTime,
-    });
   });
 
-  // Determine URL to load (dev server preferred, fallback to build files)
   const url = await getWindowUrl("main-window.html");
   logger.info("main", "Resolved main window URL", { url });
-
-  // Load URL - window will be shown automatically when ready-to-show fires
-  const loadURLStartTime = Date.now();
-  logger.info("main", "⏱️ [COLD_START] Loading URL in window", {
-    timestamp: new Date().toISOString(),
-    url,
-  });
-
   await mainWindow.loadURL(url);
-
-  const loadURLEndTime = Date.now();
-  logger.info("main", "⏱️ [COLD_START] URL loaded in window (waiting for ready-to-show)", {
-    timestamp: new Date().toISOString(),
-    duration_ms: loadURLEndTime - loadURLStartTime,
-  });
 }
 
 // ── Application menu ──────────────────────────────────────────────────
-async function setupApplicationMenu() {
-  await initDevToolsButtonState();
-  const menu = Menu.buildFromTemplate([
+function setupApplicationMenu(): void {
+  const template: MenuItemConstructorOptions[] = [
     {
       label: "App",
       submenu: [
@@ -143,7 +101,6 @@ async function setupApplicationMenu() {
         { type: "separator" },
         {
           label: "Settings…",
-          icon: "gearshape",
           accelerator: "Command+,",
           click: async () => await openSettingsWindow(),
         },
@@ -157,76 +114,143 @@ async function setupApplicationMenu() {
         { role: "quit" },
       ],
     },
-    { role: "fileMenu" },
+    {
+      label: "File",
+      submenu: [
+        {
+          label: "New Connection",
+          accelerator: "CommandOrControl+N",
+          click: () => mainWindow?.webContents.send("menu:action", "new-connection"),
+        },
+        {
+          label: "Close Tab",
+          accelerator: "CommandOrControl+W",
+          click: () => mainWindow?.webContents.send("menu:action", "close-tab"),
+        },
+        { type: "separator" },
+        { role: "close" },
+      ],
+    },
     { role: "editMenu" },
     { role: "viewMenu" },
     { role: "windowMenu" },
-  ]);
-  Menu.setApplicationMenu(menu);
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
   logger.info("main", "Application menu configured with Settings");
+}
+
+// ── Native bridge handlers ──────────────────────────────────────────────
+// Electron has no built-in "safe defaults" bridge for dialog/shell/nativeTheme/
+// Menu, so we wire exactly what renderer/preload.ts actually calls.
+interface PopupMenuItem {
+  label?: string;
+  commandId?: number;
+  type?: "separator";
+}
+interface PopupMenuOptions {
+  items: PopupMenuItem[];
+}
+interface PopupMenuResult {
+  commandId: number | null;
+}
+
+function registerNativeBridgeHandlers(): void {
+  ipcMain.handle("dialog:showOpenDialog", (_e, options) => dialog.showOpenDialog(options ?? {}));
+  ipcMain.handle("dialog:showSaveDialog", (_e, options) => dialog.showSaveDialog(options ?? {}));
+  ipcMain.handle("dialog:showMessageBox", (_e, options) => dialog.showMessageBox(options));
+  ipcMain.handle("dialog:showErrorBox", (_e, title: string, content: string) => {
+    dialog.showErrorBox(title, content);
+  });
+
+  ipcMain.handle("shell:beep", () => {
+    shell.beep();
+  });
+
+  ipcMain.handle("nativeTheme:getInfo", () => ({
+    shouldUseDarkColors: nativeTheme.shouldUseDarkColors,
+    themeSource: nativeTheme.themeSource,
+  }));
+  ipcMain.handle("nativeTheme:setThemeSource", (_e, source: "system" | "light" | "dark") => {
+    nativeTheme.themeSource = source;
+    return true;
+  });
+  ipcMain.handle("nativeTheme:getShouldUseDarkColors", () => nativeTheme.shouldUseDarkColors);
+  ipcMain.handle("nativeTheme:getThemeSource", () => nativeTheme.themeSource);
+
+  // Real Electron's Menu.popup() supports click callbacks directly, but the
+  // renderer (file-pane.tsx) still speaks the commandId-dispatch shape it was
+  // built against — this handler bridges the two rather than requiring a
+  // renderer-side rewrite.
+  ipcMain.handle("Menu:popup", (event, options: PopupMenuOptions): Promise<PopupMenuResult> => {
+    return new Promise((resolve) => {
+      let settled = false;
+      const settle = (result: PopupMenuResult) => {
+        if (settled) return;
+        settled = true;
+        resolve(result);
+      };
+      const template: MenuItemConstructorOptions[] = (options.items ?? []).map((item) => {
+        if (item.type === "separator") return { type: "separator" };
+        return {
+          label: item.label,
+          click: () => settle({ commandId: item.commandId ?? null }),
+        };
+      });
+      const menu = Menu.buildFromTemplate(template);
+      const win = BrowserWindow.fromWebContents(event.sender) ?? undefined;
+      menu.popup({ window: win, callback: () => settle({ commandId: null }) });
+    });
+  });
+
+  ipcMain.handle("Menu:setApplicationMenu", (_e, template: MenuItemConstructorOptions[] | null) => {
+    Menu.setApplicationMenu(template ? Menu.buildFromTemplate(template) : null);
+  });
 }
 
 // ── Lifecycle events ──────────────────────────────────────────────────
 app.on("window-all-closed", () => {
-  // On macOS, apps typically don't quit when all windows are closed
-  // Uncomment to quit on all windows closed:
-  // app.quit();
+  // On macOS, apps typically don't quit when all windows are closed.
 });
 
-app.on("activate", (hasVisibleWindows) => {
-  logger.info("main", "App activate event received", {
-    hasVisibleWindows,
-    mainWindowExists: !!mainWindow,
-    mainWindowDestroyed: mainWindow?.isDestroyed() ?? true,
-  });
-
-  // On macOS, re-create window when dock icon clicked if no windows
-  if (!hasVisibleWindows) {
-    if (!mainWindow || mainWindow.isDestroyed()) {
-      logger.info("main", "Creating main window due to activate event");
-      createMainWindow();
-    } else {
-      logger.info("main", "Showing existing main window");
-      mainWindow.show();
-    }
+app.on("activate", () => {
+  if (BrowserWindow.getAllWindows().length === 0) {
+    void createMainWindow();
   } else {
-    logger.info("main", "Has visible windows, no action needed");
+    mainWindow?.show();
   }
 });
 
 app.on("before-quit", () => {
   logger.info("main", "App before-quit, cleaning up connections...");
   transferManager.cancelAll();
+  editManager.closeAll();
   sshTerminalService.closeAll();
   void sessionManager.closeAll();
 });
 
-// ── App ready ─────────────────────────────────────────────────────────
-const startTime = Date.now();
-logger.info("main", "⏱️ [COLD_START] Waiting for app ready...", {
-  timestamp: new Date().toISOString(),
-});
-
-app.whenReady().then(async () => {
-  const windowCreateStartTime = Date.now();
-  logger.info("main", "⏱️ [COLD_START] App ready, creating main window", {
-    timestamp: new Date().toISOString(),
-    wait_duration_ms: windowCreateStartTime - startTime,
+// ── Auto-update ───────────────────────────────────────────────────────
+// Requires the "publish" block in package.json's "build" config to point at
+// a real repo (currently placeholders) and a GH_TOKEN at publish time.
+// Harmless no-op in dev / unpackaged builds — checkForUpdatesAndNotify()
+// itself no-ops when app.isPackaged is false, but we still guard broadly so
+// a network hiccup or missing publish config never blocks startup.
+function checkForUpdates(): void {
+  if (!app.isPackaged) {
+    logger.debug("update", "Skipping update check — running unpackaged (dev build)");
+    return;
+  }
+  autoUpdater.checkForUpdatesAndNotify().catch((error) => {
+    logger.warn("update", "Update check failed (non-fatal)", error);
   });
+}
 
-  await devHarness?.runParityAutotestIfRequested();
-
-  await setupApplicationMenu();
-
-  createMainWindow()
-    .then(() => {
-      const windowCreateEndTime = Date.now();
-      logger.info("main", "⏱️ [COLD_START] Main window created successfully", {
-        timestamp: new Date().toISOString(),
-        duration_ms: windowCreateEndTime - windowCreateStartTime,
-      });
-    })
-    .catch((error) => {
-      logger.error("main", "Failed to create main window", error);
-    });
+// ── App ready ─────────────────────────────────────────────────────────
+app.whenReady().then(async () => {
+  setupApplicationMenu();
+  try {
+    await createMainWindow();
+  } catch (error) {
+    logger.error("main", "Failed to create main window", error);
+  }
+  checkForUpdates();
 });

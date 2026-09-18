@@ -2,7 +2,7 @@ import {
   Text,
   Badge,
   Button,
-} from "@glaze/core/components";
+} from "@renderer/lib/ui";
 import {
   Loader2Icon,
   EditIcon,
@@ -13,7 +13,7 @@ import {
   ServerIcon,
 } from "lucide-react";
 import type { ConnectionProfileDTO } from "@shared/ipc-contract";
-import { cn } from "@glaze/core/utils";
+import { cn } from "@renderer/lib/cn";
 
 type BadgeColor = "blue" | "green" | "purple" | "orange" | "secondary" | "primary" | "red" | "yellow" | "magenta";
 
@@ -31,6 +31,7 @@ const PROTOCOL_LABELS: Record<string, string> = {
   ftp: "FTP",
   ftps: "FTPS",
   ssh: "SSH",
+  rdp: "RDP",
 };
 
 const PROTOCOL_BG: Record<string, string> = {
@@ -38,6 +39,7 @@ const PROTOCOL_BG: Record<string, string> = {
   ftp: "from-green-500/20 to-green-600/5",
   ftps: "from-purple-500/20 to-purple-600/5",
   ssh: "from-orange-500/20 to-orange-600/5",
+  rdp: "from-pink-500/20 to-pink-600/5",
 };
 
 export function ProfileCard({
@@ -55,12 +57,19 @@ export function ProfileCard({
         PROTOCOL_BG[profile.protocol] ?? "from-fg/5 to-fg/0",
         "hover:border-separator transition-colors cursor-default",
       )}
+      style={profile.color ? { borderLeft: `3px solid ${profile.color}` } : undefined}
     >
       {/* Protocol badge + host */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          <div className="shrink-0 size-8 rounded-full bg-control flex items-center justify-center">
+          <div className="relative shrink-0 size-8 rounded-full bg-control flex items-center justify-center">
             <ServerIcon className="size-4 text-secondary" />
+            {profile.color && (
+              <span
+                className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border border-bg"
+                style={{ backgroundColor: profile.color }}
+              />
+            )}
           </div>
           <div className="min-w-0">
             <Text variant="strong" truncate as="p">{profile.name}</Text>

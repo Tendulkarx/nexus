@@ -1,19 +1,20 @@
 {
-  "id": "f23gp016",
   "name": "nexus",
   "version": "1.0.0",
   "productName": "Nexus",
-  "description": "Unified file transfer and remote",
-  "iconDescription": "A modern file transfer and remote connection manager that unifies SFTP/FTP transfers, SSH connection management, and remote desktop access (RDP, VNC) in one sleek interface. Users can manage multiple server connections, transfer files seamlessly between local and remote systems, and handle various remote access protocols from a single dashboard. Think of a network hub, interconnected nodes, a bridge connecting different systems, or a command center with multiple connection threads converging. Aesthetic: modern, sleek, professional.",
+  "description": "A modern SFTP/FTP + SSH client for macOS",
   "private": true,
   "type": "module",
+  "main": "./out/main/index.js",
   "scripts": {
-    "build": "node glaze.ts build",
-    "dev": "node glaze.ts dev",
-    "dev:renderer": "node glaze.ts dev:renderer",
-    "lint": "node glaze.ts lint",
-    "type-check": "node glaze.ts type-check",
-    "format": "node glaze.ts format"
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "build:mac": "electron-vite build && electron-builder --mac",
+    "build:native": "cd native/nexus-display-host && npm install && npm run build",
+    "type-check": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "test": "vitest run"
   },
   "dependencies": {
     "@radix-ui/colors": "^3.0.0",
@@ -25,48 +26,72 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
+    "electron-updater": "^6.3.9",
     "lucide-react": "^0.542.0",
     "radix-ui": "^1.4.3",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
+    "react-resizable-panels": "^2.1.7",
+    "sonner": "^1.7.2",
     "ssh2": "^1.15.0",
     "ssh2-sftp-client": "^10.0.3",
     "tailwind-merge": "^3.3.1"
   },
   "devDependencies": {
+    "@electron/notarize": "^2.5.0",
     "@eslint/js": "^9.22.0",
-    "@types/ssh2": "^1.15.0",
-    "@rolldown/plugin-babel": "^0.2.1",
     "@tailwindcss/vite": "^4.2.2",
     "@types/node": "^24.3.1",
     "@types/react": "^19.1.12",
     "@types/react-dom": "^19.1.9",
+    "@types/ssh2": "^1.15.0",
     "@typescript-eslint/eslint-plugin": "^8.18.0",
     "@typescript-eslint/parser": "^8.18.0",
-    "@vitejs/plugin-react": "^6.0.1",
-    "babel-plugin-react-compiler": "^1.0.0",
-    "esbuild": "^0.27.4",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^5.0.0",
     "eslint": "^9.39.2",
     "eslint-plugin-import": "^2.31.0",
+    "eslint-plugin-react-hooks": "^5.0.0",
     "globals": "^17.3.0",
-    "oxfmt": "^0.26.0",
+    "prettier": "^3.4.2",
     "tailwindcss": "^4.2.2",
-    "tsx": "^4.20.5",
     "typescript": "^5.5.3",
-    "vite": "^8.0.2"
+    "vite": "^6.0.7",
+    "vitest": "^5.0.1"
   },
   "engines": {
-    "node": ">=24"
+    "node": ">=20"
   },
-  "packageManager": "npm@11.11.0+sha512-82gRxKrh/eY5UnNorkTFcdBQAGpgjWehkfGVqAGlJjejEtJZGGJUqjo3mbBTNbc5BTnPKGVtGPBZGhElujX5cw==",
-  "glaze": {
-    "capabilities": {},
-    "sdkVersion": "0.9.1.0",
-    "createdAt": "2026-07-10T22:12:06.783Z",
-    "lastMigration": "cli-js-entry",
-    "host": {
-      "minVersion": "0.9.1.0"
+  "build": {
+    "appId": "com.oneilblake.nexus",
+    "productName": "Nexus",
+    "files": [
+      "out/**/*",
+      "native/nexus-display-host/build/Release/*.node"
+    ],
+    "asarUnpack": [
+      "native/nexus-display-host/build/Release/*.node"
+    ],
+    "mac": {
+      "icon": "app-icon.icns",
+      "category": "public.app-category.utilities",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
     },
-    "updatedAt": 1783724774284
+    "afterPack": "build/bundle-native-deps.cjs",
+    "afterSign": "build/notarize.cjs",
+    "publish": {
+      "provider": "github",
+      "owner": "REPLACE_WITH_GITHUB_OWNER",
+      "repo": "REPLACE_WITH_GITHUB_REPO"
+    }
   }
 }

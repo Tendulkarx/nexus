@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { PanelGroup, Panel } from "@glaze/core/components";
+import { PanelGroup, Panel } from "@renderer/lib/ui";
 import type { SessionInfo } from "@shared/ipc-contract";
 import { ipc } from "@renderer/lib/ipc";
 import { FilePane } from "./file-pane";

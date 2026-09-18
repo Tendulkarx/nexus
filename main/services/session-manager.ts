@@ -5,28 +5,47 @@
  */
 import { randomUUID } from "crypto";
 
-import { logger } from "@glaze/core/backend";
+import { logger } from "../logger.js";
 
 import { connectionStore } from "./connection-store.js";
 import { credentialVault } from "./credential-vault.js";
 import { BaseSession } from "./sessions/base-session.js";
+import { DisplaySession } from "./sessions/display-session.js";
 import { FtpSession } from "./sessions/ftp-session.js";
 import { SshSession } from "./sessions/ssh-session.js";
 
 import type { ConnectionProfile, SessionConnectRequest, SessionInfo } from "@shared/ipc-contract";
 
+/** Anything SessionManager can track: a filesystem session (BaseSession) or a display session. Both expose `info` + `close()`. */
+type ManagedSession = BaseSession | DisplaySession;
+
 export class SessionManager {
-  private sessions = new Map<string, BaseSession>();
+  private sessions = new Map<string, ManagedSession>();
 
   async connect(request: SessionConnectRequest): Promise<SessionInfo> {
     const { profile, secret } = await this.resolveProfile(request);
     const sessionId = randomUUID();
 
-    let session: BaseSession;
-    if (profile.protocol === "ftp" || profile.protocol === "ftps") {
-      session = await FtpSession.connect(sessionId, profile, secret);
-    } else {
-      session = await SshSession.connect(sessionId, profile, secret);
+    // Real switch (not the old two-way ftp/ftps-else-ssh branch) so every
+    // protocol is routed explicitly — previously anything that wasn't
+    // ftp/ftps silently fell through to SshSession, which would have quietly
+    // mishandled rdp instead of erroring.
+    let session: ManagedSession;
+    switch (profile.protocol) {
+      case "ftp":
+      case "ftps":
+        session = await FtpSession.connect(sessionId, profile, secret);
+        break;
+      case "sftp":
+      case "ssh":
+        session = await SshSession.connect(sessionId, profile, secret);
+        break;
+      case "rdp":
+        // Unlike file sessions, this doesn't open a real connection yet — the
+        // native view/session only starts once the renderer's Remote Desktop
+        // tab is mounted and reports its bounds via display:connect.
+        session = new DisplaySession(sessionId, profile, secret);
+        break;
     }
 
     this.sessions.set(sessionId, session);
@@ -72,9 +91,13 @@ export class SessionManager {
     throw new Error("session:connect requires either profileId or inlineProfile");
   }
 
+  /** Returns the session as a filesystem session (SFTP/SSH/FTP/FTPS), or throws for a display (rdp) session. */
   get(sessionId: string): BaseSession {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error(`No active session: ${sessionId}`);
+    if (!(session instanceof BaseSession)) {
+      throw new Error("This connection is a Remote Desktop session and has no filesystem");
+    }
     return session;
   }
 
@@ -83,6 +106,16 @@ export class SessionManager {
     const session = this.get(sessionId);
     if (!(session instanceof SshSession)) {
       throw new Error("This connection does not support an interactive terminal");
+    }
+    return session;
+  }
+
+  /** Returns the session as a display (rdp) session, or throws if it's a filesystem session. */
+  getDisplay(sessionId: string): DisplaySession {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new Error(`No active session: ${sessionId}`);
+    if (!(session instanceof DisplaySession)) {
+      throw new Error("This connection is not a Remote Desktop session");
     }
     return session;
   }

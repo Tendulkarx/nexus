@@ -5,7 +5,7 @@
 import * as fs from "fs/promises";
 import * as path from "path";
 
-import { app } from "@glaze/core/backend";
+import { app } from "electron";
 
 export class DataStore<T> {
   private cache: T | null = null;

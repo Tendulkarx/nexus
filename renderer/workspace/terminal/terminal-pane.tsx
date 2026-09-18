@@ -4,7 +4,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { ipc } from "@renderer/lib/ipc";
 import type { SessionInfo } from "@shared/ipc-contract";
-import { Text, Button } from "@glaze/core/components";
+import { Text, Button } from "@renderer/lib/ui";
 import { TerminalIcon, RefreshCwIcon } from "lucide-react";
 
 interface TerminalPaneProps {
@@ -110,7 +110,8 @@ export function TerminalPane({ session, isVisible }: TerminalPaneProps) {
       termRef.current?.dispose();
       termRef.current = null;
     };
-  }, []); // intentionally empty: init once on mount, cleanup on unmount
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- init once per mounted instance; the parent keys each tab by session id so session.sessionId never changes for a given instance
+  }, []);
 
   // ResizeObserver -> fit + resize
   React.useEffect(() => {

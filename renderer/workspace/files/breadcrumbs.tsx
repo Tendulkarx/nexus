@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Button, Text } from "@glaze/core/components";
+import { Button, Text } from "@renderer/lib/ui";
 import { ChevronRightIcon, HomeIcon } from "lucide-react";
 
 interface BreadcrumbsProps {

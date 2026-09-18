@@ -8,7 +8,8 @@ import {
   AlertDialog,
   Dialog,
   Text,
-} from "@glaze/core/components";
+  toast,
+} from "@renderer/lib/ui";
 import {
   FolderIcon,
   FileIcon,
@@ -22,8 +23,8 @@ import {
 import { ipc } from "@renderer/lib/ipc";
 import type { FsEntry } from "@shared/ipc-contract";
 import { Breadcrumbs } from "./breadcrumbs";
-import { cn } from "@glaze/core/utils";
-import { toast } from "@glaze/core/components";
+import { FilePreview } from "./file-preview";
+import { cn } from "@renderer/lib/cn";
 
 interface FilePaneProps {
   mode: "local" | "remote";
@@ -83,10 +84,19 @@ export function FilePane({
   const [showMkdir, setShowMkdir] = React.useState(false);
   const [mkdirName, setMkdirName] = React.useState("");
   const [isDragOver, setIsDragOver] = React.useState(false);
+  const [selectedPaths, setSelectedPaths] = React.useState<Set<string>>(new Set());
+  const [lastClickedIndex, setLastClickedIndex] = React.useState<number | null>(null);
+  const [previewEntry, setPreviewEntry] = React.useState<FsEntry | null>(null);
 
   // Sync path input with prop
   React.useEffect(() => {
     setPathInput(path);
+  }, [path]);
+
+  // Navigating away clears the previous directory's selection.
+  React.useEffect(() => {
+    setSelectedPaths(new Set());
+    setLastClickedIndex(null);
   }, [path]);
 
   const listQuery = useQuery({
@@ -140,9 +150,73 @@ export function FilePane({
     onError: (err: Error) => toast.error(err.message),
   });
 
+  function handleRowClick(entry: FsEntry, index: number, e: React.MouseEvent) {
+    const isToggle = e.metaKey || e.ctrlKey;
+    const isRange = e.shiftKey;
+
+    if (isRange && lastClickedIndex !== null) {
+      const [from, to] = [Math.min(lastClickedIndex, index), Math.max(lastClickedIndex, index)];
+      const rangePaths = sorted.slice(from, to + 1).map((it) => it.path);
+      setSelectedPaths((prev) => new Set([...prev, ...rangePaths]));
+      return;
+    }
+
+    if (isToggle) {
+      setSelectedPaths((prev) => {
+        const next = new Set(prev);
+        if (next.has(entry.path)) next.delete(entry.path);
+        else next.add(entry.path);
+        return next;
+      });
+      setLastClickedIndex(index);
+      return;
+    }
+
+    setSelectedPaths(new Set([entry.path]));
+    setLastClickedIndex(index);
+  }
+
   function handleDoubleClick(entry: FsEntry) {
     if (entry.isDir) {
       onNavigate(entry.path);
+    } else {
+      setPreviewEntry(entry);
+    }
+  }
+
+  async function handleEditExternal(entry: FsEntry) {
+    console.log("[FilePane:editExternal]", { path: entry.path });
+    try {
+      await ipc.edit.open({ sessionId, path: entry.path });
+      toast.success(`Opened "${entry.name}" — changes save back to the server`);
+    } catch (err) {
+      toast.error((err as Error).message);
+    }
+  }
+
+  async function handleBulkDelete(paths: string[]) {
+    for (const p of paths) {
+      const entry = sorted.find((it) => it.path === p);
+      if (!entry) continue;
+      try {
+        await (mode === "local"
+          ? ipc.local.delete({ path: entry.path, isDir: entry.isDir })
+          : ipc.remote.delete({ sessionId, path: entry.path, isDir: entry.isDir }));
+      } catch (err) {
+        toast.error(`Couldn't delete "${entry.name}": ${(err as Error).message}`);
+      }
+    }
+    void qc.invalidateQueries({ queryKey });
+    setSelectedPaths(new Set());
+    toast.success(`Deleted ${paths.length} items`);
+  }
+
+  async function handleBulkTransfer(paths: string[], isRemote: boolean) {
+    for (const p of paths) {
+      const entry = sorted.find((it) => it.path === p);
+      if (!entry || entry.isDir) continue;
+      if (isRemote) await onDownload(entry.path, entry.name);
+      else await onUpload(entry.path, entry.name);
     }
   }
 
@@ -150,25 +224,59 @@ export function FilePane({
     e.preventDefault();
     console.log("[FilePane:contextMenu]", { mode, path: entry.path });
 
+    // Right-clicking outside the current selection resets it to just this entry
+    // (standard Finder behavior); right-clicking within a multi-selection keeps it.
+    if (!selectedPaths.has(entry.path)) {
+      setSelectedPaths(new Set([entry.path]));
+    }
+    const activeSelection = selectedPaths.has(entry.path) ? selectedPaths : new Set([entry.path]);
+    const multiCount = activeSelection.size;
+
     const isRemote = mode === "remote";
 
-    const CMD_TRANSFER = 1;
-    const CMD_RENAME = 2;
-    const CMD_DELETE = 3;
-    const CMD_MKDIR = 4;
+    const CMD_PREVIEW = 1;
+    const CMD_EDIT = 2;
+    const CMD_TRANSFER = 3;
+    const CMD_RENAME = 4;
+    const CMD_DELETE = 5;
+    const CMD_MKDIR = 6;
+    const CMD_OPEN = 7;
+    const CMD_BULK_TRANSFER = 8;
+    const CMD_BULK_DELETE = 9;
 
-    const result = await window.glazeAPI.Menu.popup({
-      items: [
-        { label: isRemote ? "Download" : "Upload", commandId: CMD_TRANSFER },
-        { type: "separator" },
-        { label: "Rename", commandId: CMD_RENAME },
-        { label: "Delete", commandId: CMD_DELETE },
-        { type: "separator" },
-        { label: "New Folder", commandId: CMD_MKDIR },
-      ],
-    });
+    const items: Array<{ label?: string; commandId?: number; type?: "separator" }> = [];
+
+    if (multiCount > 1) {
+      items.push({ label: `${isRemote ? "Download" : "Upload"} ${multiCount} items`, commandId: CMD_BULK_TRANSFER });
+      items.push({ label: `Delete ${multiCount} items`, commandId: CMD_BULK_DELETE });
+    } else {
+      if (entry.isDir) {
+        items.push({ label: "Open", commandId: CMD_OPEN });
+      } else {
+        items.push({ label: "Quick Look", commandId: CMD_PREVIEW });
+        if (isRemote) items.push({ label: "Edit in Default App", commandId: CMD_EDIT });
+        items.push({ type: "separator" });
+        items.push({ label: isRemote ? "Download" : "Upload", commandId: CMD_TRANSFER });
+      }
+      items.push({ type: "separator" });
+      items.push({ label: "Rename", commandId: CMD_RENAME });
+      items.push({ label: "Delete", commandId: CMD_DELETE });
+      items.push({ type: "separator" });
+      items.push({ label: "New Folder", commandId: CMD_MKDIR });
+    }
+
+    const result = await window.nexusAPI.Menu.popup({ items });
 
     switch (result.commandId) {
+      case CMD_OPEN:
+        onNavigate(entry.path);
+        break;
+      case CMD_PREVIEW:
+        setPreviewEntry(entry);
+        break;
+      case CMD_EDIT:
+        void handleEditExternal(entry);
+        break;
       case CMD_TRANSFER:
         if (isRemote) void onDownload(entry.path, entry.name);
         else void onUpload(entry.path, entry.name);
@@ -182,6 +290,12 @@ export function FilePane({
         break;
       case CMD_MKDIR:
         setShowMkdir(true);
+        break;
+      case CMD_BULK_TRANSFER:
+        void handleBulkTransfer(Array.from(activeSelection), isRemote);
+        break;
+      case CMD_BULK_DELETE:
+        void handleBulkDelete(Array.from(activeSelection));
         break;
     }
   }
@@ -204,7 +318,7 @@ export function FilePane({
     if (mode === "remote" && onDropFromLocal) {
       const files = Array.from(e.dataTransfer.files);
       for (const file of files) {
-        const filePath = window.glazeAPI.webUtils.getPathForFile(file);
+        const filePath = window.nexusAPI.webUtils.getPathForFile(file);
         if (filePath) {
           console.log("[FilePane:drop:finder->remote]", { filePath, name: file.name });
           await onDropFromLocal(filePath, file.name);
@@ -336,10 +450,12 @@ export function FilePane({
                 <Text variant="small" color="tertiary">..</Text>
               </button>
             )}
-            {sorted.map((entry) => (
+            {sorted.map((entry, index) => (
               <FileRow
                 key={entry.path}
                 entry={entry}
+                selected={selectedPaths.has(entry.path)}
+                onClick={(e) => handleRowClick(entry, index, e)}
                 onDoubleClick={() => handleDoubleClick(entry)}
                 onContextMenu={(e) => void handleContextMenu(entry, e)}
                 onDragStart={(e) => handleDragStart(e, entry)}
@@ -410,6 +526,16 @@ export function FilePane({
         </Dialog>
       )}
 
+      {/* File preview (Quick Look) */}
+      {previewEntry && (
+        <FilePreview
+          mode={mode}
+          sessionId={sessionId}
+          entry={previewEntry}
+          onClose={() => setPreviewEntry(null)}
+        />
+      )}
+
       {/* Delete confirmation */}
       {deleteTarget && (
         <AlertDialog
@@ -434,19 +560,25 @@ export function FilePane({
 
 interface FileRowProps {
   entry: FsEntry;
+  selected: boolean;
+  onClick: (e: React.MouseEvent) => void;
   onDoubleClick: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
   onDragStart: (e: React.DragEvent) => void;
 }
 
-function FileRow({ entry, onDoubleClick, onContextMenu, onDragStart }: FileRowProps) {
+function FileRow({ entry, selected, onClick, onDoubleClick, onContextMenu, onDragStart }: FileRowProps) {
   return (
     <div
       draggable
       onDragStart={onDragStart}
+      onClick={onClick}
       onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
-      className="flex items-center gap-2 px-3 py-1.5 hover:bg-control-subtle cursor-default select-none transition-colors group"
+      className={cn(
+        "flex items-center gap-2 px-3 py-1.5 cursor-default select-none transition-colors group",
+        selected ? "bg-accent/15 hover:bg-accent/20" : "hover:bg-control-subtle",
+      )}
     >
       <div className="shrink-0">
         {entry.isDir ? (

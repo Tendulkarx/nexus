@@ -1,18 +1,14 @@
-/*
- * Glaze framework styles (@import "@glaze/core/..." and @import "tailwindcss")
- * are automatically injected before this file during build and dev.
- * Add your custom styles and @source directives below.
- */
+@import "tailwindcss";
 
 /* Tell Tailwind to scan all local renderer window files for class names */
 @source "./**/*.{ts,tsx}";
 @source not "./preload.ts";
-@source not "./dev/**/*";
 
 /*
  * Nexus — modern cool indigo/blue theme. Colors derive from these seeds; the
- * system recomputes every ramp and semantic token. Light seeds are authored
- * ~2.5x saturated because --bg composites at 40% over the window material.
+ * ramps below (`@theme`) recompute every semantic token Tailwind generates
+ * utilities from (bg-accent, text-secondary, border-field, rounded-card, …).
+ * This file is the whole theme.
  */
 :root {
   --bg: #cfe0ff;
@@ -28,4 +24,52 @@
   --fg: #e7ecf7;
   --theme-accent: #5b9dff;
   --selection: #5b9dff;
+}
+
+@theme inline {
+  --color-accent: var(--theme-accent);
+  --color-primary: var(--fg);
+  --color-secondary: color-mix(in oklab, var(--fg) 68%, transparent);
+  --color-tertiary: color-mix(in oklab, var(--fg) 48%, transparent);
+  --color-quaternary: color-mix(in oklab, var(--fg) 32%, transparent);
+
+  --color-control: color-mix(in oklab, var(--fg) 8%, transparent);
+  --color-control-subtle: color-mix(in oklab, var(--fg) 5%, transparent);
+  --color-field: color-mix(in oklab, var(--fg) 20%, transparent);
+  --color-separator: color-mix(in oklab, var(--fg) 12%, transparent);
+  --color-popover: var(--bg-secondary);
+
+  --color-support-green: #22c55e;
+  --color-support-blue: #3b82f6;
+  --color-support-yellow: #eab308;
+  --color-support-red: #ef4444;
+
+  --radius-card: 0.75rem;
+  --radius-medium: 0.5rem;
+  --radius-pill: 999px;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--selection) 35%, transparent);
+}
+
+/* Native window dragging (traffic-light-safe title bars). Toolbar sets
+   `.drag-region`; interactive children inside it opt back out via `.no-drag`. */
+.drag-region {
+  -webkit-app-region: drag;
+}
+.no-drag {
+  -webkit-app-region: no-drag;
 }

@@ -3,7 +3,8 @@
  * native safeStorage backend. Ciphertext is stored base64-encoded inside
  * connections.json. Secret VALUES are never logged.
  */
-import { safeStorage, logger } from "@glaze/core/backend";
+import { safeStorage } from "electron";
+import { logger } from "../logger.js";
 
 export class CredentialVault {
   private availability: boolean | null = null;

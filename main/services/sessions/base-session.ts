@@ -36,5 +36,11 @@ export abstract class BaseSession {
     signal: AbortSignal,
   ): Promise<void>;
 
+  /** Reads up to maxBytes of a remote file into memory (for preview/edit). */
+  abstract readFile(remotePath: string, maxBytes: number): Promise<Buffer>;
+
+  /** Uploads a local file to a remote path without transfer-queue progress. */
+  abstract putFile(localPath: string, remotePath: string): Promise<void>;
+
   abstract close(): Promise<void>;
 }

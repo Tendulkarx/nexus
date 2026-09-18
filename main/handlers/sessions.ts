@@ -1,9 +1,10 @@
 /**
  * IPC handlers for connection sessions (connect / disconnect / list).
  */
-import { ipcMain } from "@glaze/core/backend";
+import { ipcMain } from "electron";
 
 import { asRecord, optString, reqString } from "./validate.js";
+import { editManager } from "../services/edit-manager.js";
 import { sessionManager } from "../services/session-manager.js";
 
 import { IPC } from "../../renderer/shared/ipc-contract.js";
@@ -22,7 +23,9 @@ export function registerSessionHandlers(): void {
 
   ipcMain.handle(IPC.session.disconnect, async (_e, payload: unknown) => {
     const obj = asRecord(payload, "session:disconnect");
-    await sessionManager.disconnect(reqString(obj, "sessionId", "session:disconnect"));
+    const sessionId = reqString(obj, "sessionId", "session:disconnect");
+    editManager.closeForSession(sessionId);
+    await sessionManager.disconnect(sessionId);
     return { ok: true as const };
   });
 

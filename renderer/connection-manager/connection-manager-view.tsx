@@ -13,7 +13,7 @@ import {
   Input,
   Text,
   Badge,
-} from "@glaze/core/components";
+} from "@renderer/lib/ui";
 import {
   PlusIcon,
   FolderIcon,
@@ -21,14 +21,15 @@ import {
   FolderPlusIcon,
   Loader2Icon,
 } from "lucide-react";
-import { useNavigate } from "@tanstack/react-router";
 import { ipc } from "@renderer/lib/ipc";
 import { setSession } from "@renderer/lib/sessions";
+import { addOpenSession } from "@renderer/lib/open-sessions-store";
+import { NEW_CONNECTION_EVENT } from "@renderer/lib/menu-events";
 import type { ConnectionProfileDTO, Folder, Protocol } from "@shared/ipc-contract";
 import { ConnectionForm } from "./connection-form";
 import { QuickConnectBar } from "./quick-connect-bar";
 import { ProfileCard } from "./profile-card";
-import { toast } from "@glaze/core/components";
+import { toast } from "@renderer/lib/ui";
 
 type BadgeColor = "blue" | "green" | "purple" | "orange" | "secondary" | "primary" | "red" | "yellow" | "magenta";
 
@@ -42,11 +43,11 @@ function getProtocolColor(protocol: Protocol): BadgeColor {
     case "ftp": return "green";
     case "ftps": return "purple";
     case "ssh": return "orange";
+    case "rdp": return "magenta";
   }
 }
 
 export function ConnectionManagerView() {
-  const navigate = useNavigate();
   const qc = useQueryClient();
 
   const [selectedSidebarItem, setSelectedSidebarItem] = React.useState<SidebarItem>({ kind: "all" });
@@ -84,6 +85,12 @@ export function ConnectionManagerView() {
     onError: (err: Error) => toast.error(err.message),
   });
 
+  React.useEffect(() => {
+    const handler = () => setShowNewConnection(true);
+    window.addEventListener(NEW_CONNECTION_EVENT, handler);
+    return () => window.removeEventListener(NEW_CONNECTION_EVENT, handler);
+  }, []);
+
   const { profiles = [], folders = [] } = connectionsQuery.data ?? {};
 
   const sidebarItems: SidebarItem[] = [
@@ -119,7 +126,7 @@ export function ConnectionManagerView() {
       });
       console.log("[ConnectionManagerView:connected]", sessionInfo);
       setSession(sessionInfo);
-      await navigate({ to: "/workspace/$sessionId", params: { sessionId: sessionInfo.sessionId } });
+      addOpenSession(sessionInfo.sessionId);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Connection failed";
       toast.error(msg);
@@ -202,7 +209,7 @@ export function ConnectionManagerView() {
         <div className="h-full flex flex-col">
           <QuickConnectBar onConnect={(sessionInfo) => {
             setSession(sessionInfo);
-            void navigate({ to: "/workspace/$sessionId", params: { sessionId: sessionInfo.sessionId } });
+            addOpenSession(sessionInfo.sessionId);
           }} />
 
           <ScrollArea className="flex-1" title={

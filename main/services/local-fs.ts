@@ -70,6 +70,17 @@ export class LocalFsService {
     return { home, volumes };
   }
 
+  async readFile(filePath: string, maxBytes: number): Promise<Buffer> {
+    const handle = await fs.open(filePath, "r");
+    try {
+      const buffer = Buffer.alloc(maxBytes);
+      const { bytesRead } = await handle.read(buffer, 0, maxBytes, 0);
+      return buffer.subarray(0, bytesRead);
+    } finally {
+      await handle.close();
+    }
+  }
+
   async mkdir(dirPath: string): Promise<void> {
     await fs.mkdir(dirPath, { recursive: true });
   }

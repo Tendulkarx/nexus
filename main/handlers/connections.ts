@@ -2,7 +2,7 @@
  * IPC handlers for connection-profile and folder CRUD. Thin — all logic lives in
  * ConnectionStore. Renderer never receives stored secrets (DTOs only).
  */
-import { ipcMain } from "@glaze/core/backend";
+import { ipcMain } from "electron";
 
 import { asRecord, optString, reqString } from "./validate.js";
 import { connectionStore } from "../services/connection-store.js";
@@ -10,7 +10,7 @@ import { connectionStore } from "../services/connection-store.js";
 import { IPC } from "../../renderer/shared/ipc-contract.js";
 import type { AuthType, ConnectionInput, Protocol } from "@shared/ipc-contract";
 
-const PROTOCOLS: Protocol[] = ["sftp", "ftp", "ftps", "ssh"];
+const PROTOCOLS: Protocol[] = ["sftp", "ftp", "ftps", "ssh", "rdp"];
 const AUTH_TYPES: AuthType[] = ["password", "key"];
 
 function coerceInput(value: unknown, context: string): ConnectionInput {

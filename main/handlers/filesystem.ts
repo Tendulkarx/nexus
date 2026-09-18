@@ -1,13 +1,27 @@
 /**
  * IPC handlers for remote (per-session) and local filesystem browsing/mutation.
  */
-import { ipcMain } from "@glaze/core/backend";
+import { ipcMain } from "electron";
 
 import { asRecord, optString, reqBool, reqString } from "./validate.js";
 import { localFsService } from "../services/local-fs.js";
 import { sessionManager } from "../services/session-manager.js";
 
 import { IPC } from "../../renderer/shared/ipc-contract.js";
+import type { ReadFileResult } from "@shared/ipc-contract";
+
+const PREVIEW_MAX_BYTES = 256 * 1024;
+
+/** Converts a raw buffer into a text-preview result, detecting binary content. */
+function toReadResult(buffer: Buffer): ReadFileResult {
+  const isBinary = buffer.includes(0); // NUL byte ⇒ treat as binary
+  return {
+    text: isBinary ? "" : buffer.toString("utf-8"),
+    size: buffer.length,
+    truncated: buffer.length >= PREVIEW_MAX_BYTES,
+    isBinary,
+  };
+}
 
 export function registerFilesystemHandlers(): void {
   // ── Remote ────────────────────────────────────────────────────────────
@@ -38,6 +52,13 @@ export function registerFilesystemHandlers(): void {
     return { ok: true as const };
   });
 
+  ipcMain.handle(IPC.remote.readFile, async (_e, payload: unknown) => {
+    const obj = asRecord(payload, "remote:readFile");
+    const session = sessionManager.get(reqString(obj, "sessionId", "remote:readFile"));
+    const buffer = await session.readFile(reqString(obj, "path", "remote:readFile"), PREVIEW_MAX_BYTES);
+    return toReadResult(buffer);
+  });
+
   // ── Local ─────────────────────────────────────────────────────────────
   ipcMain.handle(IPC.local.list, async (_e, payload: unknown) => {
     const obj = payload ? asRecord(payload, "local:list") : {};
@@ -62,5 +83,11 @@ export function registerFilesystemHandlers(): void {
     const obj = asRecord(payload, "local:delete");
     await localFsService.delete(reqString(obj, "path", "local:delete"), reqBool(obj, "isDir", "local:delete"));
     return { ok: true as const };
+  });
+
+  ipcMain.handle(IPC.local.readFile, async (_e, payload: unknown) => {
+    const obj = asRecord(payload, "local:readFile");
+    const buffer = await localFsService.readFile(reqString(obj, "path", "local:readFile"), PREVIEW_MAX_BYTES);
+    return toReadResult(buffer);
   });
 }

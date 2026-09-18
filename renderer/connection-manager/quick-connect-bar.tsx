@@ -1,9 +1,8 @@
 import * as React from "react";
-import { Input, Button, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, Text } from "@glaze/core/components";
+import { Input, Button, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, Text, toast } from "@renderer/lib/ui";
 import { ZapIcon, Loader2Icon } from "lucide-react";
 import { ipc } from "@renderer/lib/ipc";
 import type { Protocol, SessionInfo } from "@shared/ipc-contract";
-import { toast } from "@glaze/core/components";
 
 interface QuickConnectBarProps {
   onConnect: (sessionInfo: SessionInfo) => void;
@@ -14,6 +13,7 @@ const DEFAULT_PORTS: Record<Protocol, number> = {
   ftp: 21,
   ftps: 990,
   ssh: 22,
+  rdp: 3389,
 };
 
 export function QuickConnectBar({ onConnect }: QuickConnectBarProps) {

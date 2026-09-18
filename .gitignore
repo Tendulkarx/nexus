@@ -1,11 +1,16 @@
 # Dependencies
 node_modules/
 
-# Agent context (auto-generated, not worth versioning)
-.glaze_memory/
+# Build output
+out/
+dist/
+dist-electron/
 
-# App icons (binary, auto-generated)
-app-icon.*
+# node-gyp native addon build output (native/nexus-display-host)
+native/**/build/
+
+# Vendored from-source FreeRDP build (native/nexus-display-host/scripts/build-freerdp.sh)
+native/**/vendor/
 
 # OS files
 .DS_Store
@@ -13,6 +18,3 @@ Thumbs.db
 
 # Logs
 *.log
-
-# Glaze agent temporary files
-tmp/*

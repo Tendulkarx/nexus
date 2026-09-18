@@ -1,0 +1,22 @@
+{
+  "name": "nexus-display-host",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Native macOS addon embedding a live RDP session as a child NSView directly inside Nexus's Electron window.",
+  "main": "index.js",
+  "scripts": {
+    "build": "./scripts/ensure-freerdp.sh && node-gyp rebuild",
+    "build:freerdp": "./scripts/build-freerdp.sh",
+    "clean": "node-gyp clean"
+  },
+  "dependencies": {
+    "node-addon-api": "^8.2.2"
+  },
+  "devDependencies": {
+    "node-gyp": "^10.2.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "os": ["darwin"]
+}

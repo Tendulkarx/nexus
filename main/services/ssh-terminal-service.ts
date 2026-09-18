@@ -4,7 +4,7 @@
  */
 import { randomUUID } from "crypto";
 
-import { logger } from "@glaze/core/backend";
+import { logger } from "../logger.js";
 
 import { emitToRenderer } from "./ipc-emitter.js";
 import { sessionManager } from "./session-manager.js";

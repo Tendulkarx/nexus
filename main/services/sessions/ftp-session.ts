@@ -5,6 +5,7 @@
  */
 import * as fsp from "fs/promises";
 import * as posix from "path/posix";
+import { Writable } from "stream";
 
 import { Client, FileType, type AccessOptions } from "basic-ftp";
 
@@ -55,6 +56,7 @@ export class FtpSession extends BaseSession {
       username: profile.username,
       homeDir: home || "/",
       supportsTerminal: false,
+      kind: "file",
     };
     return new FtpSession(browseClient, info, access);
   }
@@ -128,6 +130,36 @@ export class FtpSession extends BaseSession {
       client.trackProgress((info) => onProgress(info.bytes, total));
       return client.downloadTo(localPath, remotePath);
     });
+  }
+
+  async readFile(remotePath: string, maxBytes: number): Promise<Buffer> {
+    const client = await this.getTransferClient();
+    const chunks: Buffer[] = [];
+    let total = 0;
+    let capped = false;
+    const sink = new Writable({
+      write: (chunk: Buffer, _enc, cb) => {
+        chunks.push(chunk);
+        total += chunk.length;
+        if (total >= maxBytes && !capped) {
+          capped = true;
+          this.transferClientDead = true; // aborting mid-download taints the client
+          sink.destroy();
+        }
+        cb();
+      },
+    });
+    try {
+      await client.downloadTo(sink, remotePath);
+    } catch (err) {
+      if (!capped) throw err;
+    }
+    return Buffer.concat(chunks).subarray(0, maxBytes);
+  }
+
+  async putFile(localPath: string, remotePath: string): Promise<void> {
+    const client = await this.getTransferClient();
+    await client.uploadFrom(localPath, remotePath);
   }
 
   /** Wires cancellation (closing the transfer client aborts the in-flight op). */

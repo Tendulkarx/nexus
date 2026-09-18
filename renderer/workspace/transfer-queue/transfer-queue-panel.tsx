@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Button, Text, ScrollArea } from "@glaze/core/components";
+import { Button, Text, ScrollArea } from "@renderer/lib/ui";
 import {
   XIcon,
   ArrowUpIcon,
