@@ -22,7 +22,7 @@ import { ipc } from "@renderer/lib/ipc";
 import { setSession, getSession } from "@renderer/lib/sessions";
 import { addOpenSession, closeOpenSession, setActiveView, useOpenSessions } from "@renderer/lib/open-sessions-store";
 import { NEW_CONNECTION_EVENT, NEW_FOLDER_EVENT, OPEN_PALETTE_EVENT } from "@renderer/lib/menu-events";
-import { toggleTheme } from "@renderer/lib/native-theme";
+import { toggleTheme } from "@renderer/lib/theme-actions";
 import { Badge, Dialog, Input, toast } from "@renderer/lib/ui";
 import type { ConnectionProfileDTO, Protocol } from "@shared/ipc-contract";
 
