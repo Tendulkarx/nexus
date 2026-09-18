@@ -28,7 +28,7 @@ class FakeFtpSession {
 vi.mock("./sessions/ssh-session.js", () => ({ SshSession: FakeSshSession }));
 vi.mock("./sessions/ftp-session.js", () => ({ FtpSession: FakeFtpSession }));
 
-const connectionStore = { getRaw: vi.fn() };
+const connectionStore = { getRaw: vi.fn(), recordConnected: vi.fn().mockResolvedValue(undefined) };
 vi.mock("./connection-store.js", () => ({ connectionStore }));
 
 const credentialVault = { decrypt: vi.fn() };

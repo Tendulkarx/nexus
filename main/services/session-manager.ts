@@ -54,6 +54,12 @@ export class SessionManager {
       protocol: profile.protocol,
       host: profile.host,
     });
+    // Only a saved profile (not an ad-hoc quick-connect) has a lastConnectedAt to record.
+    if (request.profileId) {
+      connectionStore
+        .recordConnected(request.profileId)
+        .catch((err) => logger.warn("session-manager", "Failed to record lastConnectedAt", err));
+    }
     return session.info;
   }
 

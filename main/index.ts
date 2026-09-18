@@ -3,9 +3,9 @@
 // Electron doesn't auto-wire but that the preload/renderer actually call.
 import * as fs from "fs";
 import * as path from "path";
-import { fileURLToPath } from "url";
+import { fileURLToPath, pathToFileURL } from "url";
 
-import { app, BrowserWindow, Menu, shell, dialog, nativeTheme, ipcMain } from "electron";
+import { app, BrowserWindow, Menu, shell, dialog, nativeTheme, ipcMain, protocol, net } from "electron";
 import type { MenuItemConstructorOptions } from "electron";
 // electron-updater ships as CommonJS with no real named exports — under
 // Node ESM ("type": "module" in package.json) it must be imported via its
@@ -17,6 +17,7 @@ import { registerHandlers } from "./handlers/index.js";
 import { getPreloadPath, getWindowUrl } from "./windows/window-paths.js";
 import { openSettingsWindow } from "./windows/settings-window.js";
 import { editManager } from "./services/edit-manager.js";
+import { prepareDragDownload } from "./services/drag-download.js";
 import { sessionManager } from "./services/session-manager.js";
 import { sshTerminalService } from "./services/ssh-terminal-service.js";
 import { transferManager } from "./services/transfer-manager.js";
@@ -24,6 +25,14 @@ import { logger } from "./logger.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Privileged scheme for dragging a remote file out to Finder (renderer sets a
+// "DownloadURL" drag-data entry pointing at nexus-drag://<sessionId>/<path>;
+// Chromium fetches it only once the OS drop target actually accepts the
+// file). Must be registered before the app is ready.
+protocol.registerSchemesAsPrivileged([
+  { scheme: "nexus-drag", privileges: { standard: true, supportFetchAPI: true, stream: true, corsEnabled: true } },
+]);
 
 // ── IPC Handlers ──────────────────────────────────────────────────────
 registerHandlers();
@@ -207,6 +216,15 @@ function registerNativeBridgeHandlers(): void {
   });
 }
 
+// ── Dock transfer progress (macOS only — app.dock is undefined elsewhere) ──
+const DOCK_UPDATE_INTERVAL_MS = 500;
+
+function updateDockTransferProgress(): void {
+  const { count, progress } = transferManager.getActiveSummary();
+  app.dock?.setBadge(count > 0 ? String(count) : "");
+  mainWindow?.setProgressBar(count > 0 ? progress : -1);
+}
+
 // ── Lifecycle events ──────────────────────────────────────────────────
 app.on("window-all-closed", () => {
   // On macOS, apps typically don't quit when all windows are closed.
@@ -247,10 +265,27 @@ function checkForUpdates(): void {
 // ── App ready ─────────────────────────────────────────────────────────
 app.whenReady().then(async () => {
   setupApplicationMenu();
+  registerDragDownloadProtocol();
   try {
     await createMainWindow();
   } catch (error) {
     logger.error("main", "Failed to create main window", error);
   }
   checkForUpdates();
+  setInterval(updateDockTransferProgress, DOCK_UPDATE_INTERVAL_MS);
 });
+
+function registerDragDownloadProtocol(): void {
+  protocol.handle("nexus-drag", async (request) => {
+    try {
+      const url = new URL(request.url);
+      const sessionId = url.hostname;
+      const remotePath = decodeURIComponent(url.pathname.slice(1));
+      const tempPath = await prepareDragDownload(sessionId, remotePath);
+      return net.fetch(pathToFileURL(tempPath).toString());
+    } catch (error) {
+      logger.error("main", "Drag-out download failed", error);
+      return new Response("Download failed", { status: 500 });
+    }
+  });
+}

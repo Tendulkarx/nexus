@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import type { ConnectionProfileDTO } from "@shared/ipc-contract";
 import { cn } from "@renderer/lib/cn";
+import { HealthDot, formatLastConnected } from "./connection-health";
 
 type BadgeColor = "blue" | "green" | "purple" | "orange" | "secondary" | "primary" | "red" | "yellow" | "magenta";
 
@@ -93,6 +94,14 @@ export function ProfileCard({
             {profile.authType === "key" ? "Key" : "Password"}
           </Text>
         </div>
+      </div>
+
+      {/* Health */}
+      <div className="flex items-center gap-1.5">
+        <HealthDot host={profile.host} port={profile.port} />
+        <Text variant="small" color="tertiary">
+          Last connected: {formatLastConnected(profile.lastConnectedAt)}
+        </Text>
       </div>
 
       {/* Tags */}

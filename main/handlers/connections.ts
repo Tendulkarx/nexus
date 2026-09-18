@@ -4,8 +4,9 @@
  */
 import { ipcMain } from "electron";
 
-import { asRecord, optString, reqString } from "./validate.js";
+import { asRecord, optString, reqNumber, reqString } from "./validate.js";
 import { connectionStore } from "../services/connection-store.js";
+import { checkReachable } from "../services/reachability.js";
 
 import { IPC } from "../../renderer/shared/ipc-contract.js";
 import type { AuthType, ConnectionInput, Protocol } from "@shared/ipc-contract";
@@ -91,6 +92,14 @@ export function registerConnectionHandlers(): void {
     const id = reqString(obj, "id", "connections:moveToFolder");
     const folderId = optString(obj, "folderId") ?? null;
     return connectionStore.moveToFolder(id, folderId);
+  });
+
+  ipcMain.handle(IPC.connections.checkReachability, async (_e, payload: unknown) => {
+    const obj = asRecord(payload, "connections:checkReachability");
+    const host = reqString(obj, "host", "connections:checkReachability");
+    const port = reqNumber(obj, "port", "connections:checkReachability");
+    const reachable = await checkReachable(host, port);
+    return { reachable };
   });
 
   ipcMain.handle(IPC.folders.create, async (_e, payload: unknown) => {
