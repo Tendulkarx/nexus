@@ -71,6 +71,10 @@ export function useTransfers() {
   );
 
   useEffect(() => {
+    const offQueued = ipc.transfer.onQueued((item) => {
+      console.log("[useTransfers:queued]", item);
+      dispatch({ type: "add", item });
+    });
     const offProgress = ipc.transfer.onProgress((payload) => {
       console.log("[useTransfers:progress]", payload);
       dispatch({
@@ -90,6 +94,7 @@ export function useTransfers() {
       dispatch({ type: "error", transferId: payload.transferId, message: payload.message });
     });
     return () => {
+      offQueued();
       offProgress();
       offDone();
       offError();

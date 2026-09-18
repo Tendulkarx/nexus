@@ -8,6 +8,7 @@ import { registerDisplayHandlers } from "./display.js";
 import { registerEditHandlers } from "./edit.js";
 import { registerFilesystemHandlers } from "./filesystem.js";
 import { registerSessionHandlers } from "./sessions.js";
+import { registerSyncHandlers } from "./sync.js";
 import { registerTerminalHandlers } from "./terminal.js";
 import { registerTransferHandlers } from "./transfers.js";
 import { getSettingsWindow, openSettingsWindow } from "../windows/settings-window.js";
@@ -40,6 +41,7 @@ export function registerHandlers(): void {
   registerTerminalHandlers();
   registerEditHandlers();
   registerDisplayHandlers();
+  registerSyncHandlers();
 
   logger.info("handlers", "✓ IPC handlers registered");
 }

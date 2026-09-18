@@ -245,6 +245,10 @@ export interface TransferItem {
 // event↓ transfer:progress { transferId, transferred, total, bytesPerSec }
 // event↓ transfer:done     { transferId }
 // event↓ transfer:error    { transferId, message }
+// event↓ transfer:queued   TransferItem
+//   Emitted when a transfer is queued by something other than the renderer's
+//   own upload/download call (currently: sync execution) so the transfer
+//   queue panel can track it from the start like any other transfer.
 export interface TransferProgressEvent {
   transferId: string;
   transferred: number;
@@ -253,6 +257,69 @@ export interface TransferProgressEvent {
 }
 export interface TransferDoneEvent { transferId: string }
 export interface TransferErrorEvent { transferId: string; message: string }
+
+// ── Directory sync (invoke + events) ────────────────────────────────────────
+//
+// A sync always runs between one local directory and one remote directory on
+// an open session. sync:plan computes what WOULD happen (no filesystem/network
+// mutation); sync:execute runs a plan the user has already seen and confirmed.
+// Upload/download actions execute through the same TransferManager used by
+// manual transfers (see transfer:queued above); deletions are immediate,
+// one-shot operations with no meaningful progress of their own.
+
+export type SyncMode = "upload" | "download" | "two-way";
+
+/**
+ * "conflict" only ever appears in two-way mode: without a stored "last
+ * synced" baseline there's no reliable way to tell whether just one side
+ * changed or both did, so any both-sides-differ case is surfaced for the
+ * user to resolve by hand rather than silently picking a winner.
+ */
+export type SyncActionType = "upload" | "download" | "delete-local" | "delete-remote" | "conflict";
+
+export interface SyncPlanEntry {
+  /** posix-relative path from the sync root, e.g. "sub/dir/file.txt" */
+  relPath: string;
+  action: SyncActionType;
+  /** size (bytes) of the copy that would become authoritative, or of the side being deleted */
+  size: number;
+  /** short human-readable reason, e.g. "only on local", "remote is newer" */
+  detail: string;
+}
+
+// sync:plan    { sessionId, localRoot, remoteRoot, mode, deleteOrphans } → SyncPlanResult
+// sync:execute { sessionId, localRoot, remoteRoot, entries }             → SyncExecuteResult
+export interface SyncPlanRequest {
+  sessionId: string;
+  localRoot: string;
+  remoteRoot: string;
+  mode: SyncMode;
+  /** Whether to delete files present on only one side to mirror completely. Off by default — explicit opt-in. */
+  deleteOrphans: boolean;
+}
+export interface SyncPlanResult {
+  entries: SyncPlanEntry[];
+}
+
+export interface SyncExecuteRequest {
+  sessionId: string;
+  localRoot: string;
+  remoteRoot: string;
+  /** The plan entries the user confirmed — "conflict" entries are never executed. */
+  entries: SyncPlanEntry[];
+}
+export interface SyncExecuteResult {
+  completed: number;
+  total: number;
+  failed: Array<{ relPath: string; message: string }>;
+}
+
+// event↓ sync:progress { completed, total, relPath }
+export interface SyncProgressEvent {
+  completed: number;
+  total: number;
+  relPath: string;
+}
 
 // ── Terminal (invoke + events) ────────────────────────────────────────────────
 
@@ -319,6 +386,12 @@ export const IPC = {
     progress: "transfer:progress",
     done: "transfer:done",
     error: "transfer:error",
+    queued: "transfer:queued",
+  },
+  sync: {
+    plan: "sync:plan",
+    execute: "sync:execute",
+    progress: "sync:progress",
   },
   terminal: {
     open: "terminal:open",
