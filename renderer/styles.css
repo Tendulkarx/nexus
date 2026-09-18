@@ -33,11 +33,12 @@
   --color-tertiary: color-mix(in oklab, var(--fg) 48%, transparent);
   --color-quaternary: color-mix(in oklab, var(--fg) 32%, transparent);
 
-  --color-control: color-mix(in oklab, var(--fg) 8%, transparent);
-  --color-control-subtle: color-mix(in oklab, var(--fg) 5%, transparent);
-  --color-field: color-mix(in oklab, var(--fg) 20%, transparent);
-  --color-separator: color-mix(in oklab, var(--fg) 12%, transparent);
+  --color-control: color-mix(in oklab, var(--fg) 12%, transparent);
+  --color-control-subtle: color-mix(in oklab, var(--fg) 7%, transparent);
+  --color-field: color-mix(in oklab, var(--fg) 26%, transparent);
+  --color-separator: color-mix(in oklab, var(--fg) 18%, transparent);
   --color-popover: var(--bg-secondary);
+  --color-chrome: var(--bg-secondary);
 
   --color-support-green: #22c55e;
   --color-support-blue: #3b82f6;

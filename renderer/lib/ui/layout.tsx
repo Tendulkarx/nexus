@@ -36,7 +36,7 @@ interface SidebarProps {
 
 export function Sidebar({ searchable, searchPlaceholder, searchValue, onSearchChange, actions, children }: SidebarProps) {
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col bg-chrome">
       {/* drag-region + left padding clears the inset macOS traffic lights (trafficLightPosition x:16 in main/index.ts) */}
       <div className="drag-region flex items-center gap-1.5 p-2 pl-20 border-b border-separator shrink-0">
         {searchable && (
@@ -141,7 +141,7 @@ export function Toolbar({ className, ...props }: React.HTMLAttributes<HTMLDivEle
       data-toolbar
       className={cn(
         // pl-20 clears the inset macOS traffic lights (trafficLightPosition x:16 in main/index.ts)
-        "drag-region flex items-center justify-between gap-2 border-b border-separator pl-20 pr-3 py-2 shrink-0",
+        "drag-region flex items-center justify-between gap-2 border-b border-separator bg-chrome pl-20 pr-3 py-2 shrink-0",
         className,
       )}
       {...props}

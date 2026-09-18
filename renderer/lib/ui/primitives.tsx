@@ -131,7 +131,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
         "w-full rounded-medium border border-field bg-transparent outline-none transition-colors",
         "focus:border-accent focus:ring-1 focus:ring-accent/40",
         "placeholder:text-tertiary",
-        variant === "filled" && "bg-control border-transparent",
+        variant === "filled" && "bg-control border-field/70",
         size === "small" ? "h-7 px-2 text-xs" : "h-8 px-2.5 text-sm",
         className,
       )}

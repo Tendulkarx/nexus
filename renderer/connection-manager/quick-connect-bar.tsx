@@ -60,7 +60,7 @@ export function QuickConnectBar({ onConnect }: QuickConnectBarProps) {
   }
 
   return (
-    <div className="flex items-center gap-2 px-4 py-2 border-b border-separator bg-control-subtle/30">
+    <div className="flex items-center gap-2 px-4 py-2 border-b border-separator bg-chrome">
       <ZapIcon className="size-3.5 text-accent shrink-0" />
       <Text variant="small" color="secondary" className="shrink-0">Quick Connect</Text>
 

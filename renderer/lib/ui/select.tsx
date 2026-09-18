@@ -17,7 +17,7 @@ export const SelectTrigger = React.forwardRef<HTMLButtonElement, SelectTriggerPr
       className={cn(
         "inline-flex items-center justify-between gap-1.5 rounded-medium border border-field bg-transparent outline-none",
         "focus:border-accent focus:ring-1 focus:ring-accent/40",
-        variant === "filled" && "bg-control border-transparent",
+        variant === "filled" && "bg-control border-field/70",
         size === "small" ? "h-7 px-2 text-xs" : "h-8 px-2.5 text-sm",
         className,
       )}

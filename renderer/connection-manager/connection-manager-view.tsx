@@ -156,7 +156,7 @@ export function ConnectionManagerView() {
         sidebar={
           <Sidebar
             searchable
-            searchPlaceholder="Filter connections..."
+            searchPlaceholder="Filter…"
             searchValue={searchValue}
             onSearchChange={setSearchValue}
             actions={
