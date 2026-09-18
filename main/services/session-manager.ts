@@ -91,6 +91,8 @@ export class SessionManager {
         defaultRemotePath: input.defaultRemotePath ?? null,
         color: input.color ?? null,
         secret: null,
+        agentForward: input.agentForward ?? false,
+        onConnectCommand: input.onConnectCommand ?? null,
         jumpHost: input.jumpHost
           ? {
               host: input.jumpHost.host,

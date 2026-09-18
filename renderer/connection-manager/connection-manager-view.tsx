@@ -22,6 +22,7 @@ import {
   Loader2Icon,
   LayoutGridIcon,
   ListIcon,
+  DownloadIcon,
 } from "lucide-react";
 import { ipc } from "@renderer/lib/ipc";
 import { setSession } from "@renderer/lib/sessions";
@@ -33,6 +34,7 @@ import { ConnectionForm } from "./connection-form";
 import { QuickConnectBar } from "./quick-connect-bar";
 import { ProfileCard } from "./profile-card";
 import { ProfileRow } from "./profile-row";
+import { SshConfigImportDialog } from "./ssh-config-import-dialog";
 import { toast } from "@renderer/lib/ui";
 
 type ViewMode = "grid" | "list";
@@ -62,6 +64,7 @@ export function ConnectionManagerView() {
   const [editProfile, setEditProfile] = React.useState<ConnectionProfileDTO | null>(null);
   const [newFolderName, setNewFolderName] = React.useState("");
   const [showNewFolder, setShowNewFolder] = React.useState(false);
+  const [showSshConfigImport, setShowSshConfigImport] = React.useState(false);
   const [deleteTarget, setDeleteTarget] = React.useState<ConnectionProfileDTO | null>(null);
   const [connectingId, setConnectingId] = React.useState<string | null>(null);
   const [passwordPrompt, setPasswordPrompt] = React.useState<{ profile: ConnectionProfileDTO; password: string } | null>(null);
@@ -169,6 +172,15 @@ export function ConnectionManagerView() {
                   aria-label="New folder"
                 >
                   <FolderPlusIcon className="size-3.5" />
+                </Button>
+                <Button
+                  iconOnly
+                  variant="transparent"
+                  size="small"
+                  onClick={() => setShowSshConfigImport(true)}
+                  aria-label="Import from SSH config"
+                >
+                  <DownloadIcon className="size-3.5" />
                 </Button>
                 <Button
                   iconOnly
@@ -379,6 +391,8 @@ export function ConnectionManagerView() {
           />
         </div>
       </Dialog>
+
+      <SshConfigImportDialog open={showSshConfigImport} onOpenChange={setShowSshConfigImport} />
 
       {/* Delete confirmation */}
       {deleteTarget && (

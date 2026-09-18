@@ -57,6 +57,9 @@ export function ConnectionForm({ editProfile, folders, onSave, onCancel }: Conne
   const [tags, setTags] = React.useState(editProfile?.tags.join(", ") ?? "");
   const [color, setColor] = React.useState<string | null>(editProfile?.color ?? null);
 
+  const [agentForward, setAgentForward] = React.useState(editProfile?.agentForward ?? false);
+  const [onConnectCommand, setOnConnectCommand] = React.useState(editProfile?.onConnectCommand ?? "");
+
   const [jumpEnabled, setJumpEnabled] = React.useState(Boolean(editProfile?.jumpHost));
   const [jumpHostAddress, setJumpHostAddress] = React.useState(editProfile?.jumpHost?.host ?? "");
   const [jumpPort, setJumpPort] = React.useState(String(editProfile?.jumpHost?.port ?? 22));
@@ -87,6 +90,8 @@ export function ConnectionForm({ editProfile, folders, onSave, onCancel }: Conne
         tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
         color,
         secret: secret || undefined,
+        agentForward,
+        onConnectCommand: onConnectCommand.trim() || null,
         jumpHost: jumpEnabled
           ? {
               host: jumpHostAddress,
@@ -338,6 +343,34 @@ export function ConnectionForm({ editProfile, folders, onSave, onCancel }: Conne
                 )}
               </>
             )}
+          </FieldSet>
+        )}
+
+        {(protocol === "sftp" || protocol === "ssh") && (
+          <FieldSet title="SSH">
+            <Field orientation="horizontal">
+              <label className="flex items-center gap-2 text-sm text-primary">
+                <input
+                  type="checkbox"
+                  checked={agentForward}
+                  onChange={(e) => setAgentForward(e.target.checked)}
+                />
+                Forward local SSH agent
+              </label>
+            </Field>
+            <Field
+              label="On connect"
+              description="Typed into each new terminal shell automatically. One command per line."
+              orientation="horizontal"
+            >
+              <textarea
+                placeholder={"cd /var/www\ngit status"}
+                value={onConnectCommand}
+                onChange={(e) => setOnConnectCommand(e.target.value)}
+                rows={3}
+                className="w-full rounded-medium border border-field bg-transparent px-2.5 py-1.5 text-sm outline-none transition-colors focus:border-accent focus:ring-1 focus:ring-accent/40 placeholder:text-tertiary font-mono"
+              />
+            </Field>
           </FieldSet>
         )}
 

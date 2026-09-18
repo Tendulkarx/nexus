@@ -56,6 +56,8 @@ function coerceInput(value: unknown, context: string): ConnectionInput {
     color: optString(obj, "color") ?? null,
     secret: optString(obj, "secret") ?? undefined,
     jumpHost: obj.jumpHost ? coerceJumpHost(obj.jumpHost, `${context}.jumpHost`) : null,
+    agentForward: obj.agentForward === true,
+    onConnectCommand: optString(obj, "onConnectCommand") ?? null,
   };
 }
 
@@ -80,6 +82,8 @@ function coercePatch(value: unknown, context: string): Partial<ConnectionInput> 
   if ("jumpHost" in obj) {
     patch.jumpHost = obj.jumpHost === null ? null : coerceJumpHost(obj.jumpHost, `${context}.jumpHost`);
   }
+  if (typeof obj.agentForward === "boolean") patch.agentForward = obj.agentForward;
+  if ("onConnectCommand" in obj) patch.onConnectCommand = optString(obj, "onConnectCommand") ?? null;
   return patch;
 }
 
