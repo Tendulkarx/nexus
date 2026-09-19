@@ -3,10 +3,13 @@
  * throttled progress stream (~10 Hz) and is cancelable via an AbortController.
  */
 import { randomUUID } from "crypto";
+import * as path from "path";
 
 import { logger } from "../logger.js";
 
+import { activityLog } from "./activity-log.js";
 import { emitToRenderer } from "./ipc-emitter.js";
+import { notify } from "./notification-service.js";
 import { sessionManager } from "./session-manager.js";
 import { TransferCanceledError } from "./sessions/base-session.js";
 
@@ -40,19 +43,32 @@ export class TransferManager {
    * several transfers as a batch (e.g. directory sync) and need to know when
    * each one is done, while still sharing the same queueing/progress/cancel
    * machinery and events as a manually-started transfer.
+   *
+   * `silent: true` skips this transfer's own activity-log entry and native
+   * notification — used by directory sync, which logs/notifies once for the
+   * whole batch instead of once per file (see SyncManager.execute).
    */
   startTracked(
     direction: TransferDirection,
     sessionId: string,
     localPath: string,
     remotePath: string,
+    options: { silent?: boolean } = {},
   ): { transferId: string; done: Promise<{ ok: boolean; message?: string }> } {
     const transferId = randomUUID();
     const controller = new AbortController();
     this.controllers.set(transferId, controller);
     this.active.set(transferId, { transferred: 0, total: 0 });
 
-    const done = this.run(transferId, direction, sessionId, localPath, remotePath, controller.signal);
+    const done = this.run(
+      transferId,
+      direction,
+      sessionId,
+      localPath,
+      remotePath,
+      controller.signal,
+      options.silent ?? false,
+    );
     return { transferId, done };
   }
 
@@ -72,6 +88,7 @@ export class TransferManager {
     localPath: string,
     remotePath: string,
     signal: AbortSignal,
+    silent: boolean,
   ): Promise<{ ok: boolean; message?: string }> {
     const session = sessionManager.get(sessionId);
     let lastEmit = 0;
@@ -95,6 +112,8 @@ export class TransferManager {
       } satisfies TransferProgressEvent);
     };
 
+    const name = path.basename(direction === "upload" ? localPath : remotePath);
+
     try {
       if (direction === "upload") {
         await session.upload(localPath, remotePath, onProgress, signal);
@@ -102,16 +121,26 @@ export class TransferManager {
         await session.download(remotePath, localPath, onProgress, signal);
       }
       emitToRenderer(IPC.transfer.done, { transferId } satisfies TransferDoneEvent);
+      if (!silent) {
+        const verb = direction === "upload" ? "Uploaded" : "Downloaded";
+        activityLog
+          .record("transfer-done", `${verb} ${name}`)
+          .catch((err) => logger.warn("transfer-manager", "Failed to record activity log entry", err));
+        notify("Transfer complete", `${verb} ${name}`);
+      }
       return { ok: true };
     } catch (err) {
-      const message =
-        err instanceof TransferCanceledError
-          ? "Transfer canceled"
-          : err instanceof Error
-            ? err.message
-            : "Transfer failed";
+      const canceled = err instanceof TransferCanceledError;
+      const message = canceled ? "Transfer canceled" : err instanceof Error ? err.message : "Transfer failed";
       logger.warn("transfer-manager", "Transfer ended with error", { transferId, message });
       emitToRenderer(IPC.transfer.error, { transferId, message } satisfies TransferErrorEvent);
+      // A user-initiated cancel isn't a failure worth logging/notifying about.
+      if (!silent && !canceled) {
+        activityLog
+          .record("transfer-error", `Failed to transfer ${name}`, message)
+          .catch((err2) => logger.warn("transfer-manager", "Failed to record activity log entry", err2));
+        notify("Transfer failed", `${name}: ${message}`);
+      }
       return { ok: false, message };
     } finally {
       this.controllers.delete(transferId);

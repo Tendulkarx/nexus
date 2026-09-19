@@ -7,6 +7,8 @@ import { describe, it, expect, vi } from "vitest";
 vi.mock("./ipc-emitter.js", () => ({ emitToRenderer: vi.fn() }));
 vi.mock("./session-manager.js", () => ({ sessionManager: { get: vi.fn() } }));
 vi.mock("./transfer-manager.js", () => ({ transferManager: { startTracked: vi.fn() } }));
+vi.mock("./activity-log.js", () => ({ activityLog: { record: vi.fn().mockResolvedValue(undefined) } }));
+vi.mock("./notification-service.js", () => ({ notify: vi.fn() }));
 
 import { computeSyncPlan, type SyncFileEntry } from "./sync-manager.js";
 

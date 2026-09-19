@@ -7,8 +7,10 @@ import { randomUUID } from "crypto";
 
 import { logger } from "../logger.js";
 
+import { activityLog } from "./activity-log.js";
 import { connectionStore } from "./connection-store.js";
 import { credentialVault } from "./credential-vault.js";
+import { notify } from "./notification-service.js";
 import { BaseSession } from "./sessions/base-session.js";
 import { DisplaySession } from "./sessions/display-session.js";
 import { FtpSession } from "./sessions/ftp-session.js";
@@ -60,7 +62,32 @@ export class SessionManager {
         .recordConnected(request.profileId)
         .catch((err) => logger.warn("session-manager", "Failed to record lastConnectedAt", err));
     }
+    activityLog
+      .record("connect", `Connected to ${profile.name} (${profile.host})`)
+      .catch((err) => logger.warn("session-manager", "Failed to record activity log entry", err));
+
+    // Only SshSession currently detects the underlying connection dying on
+    // its own (ssh2's Client is a real EventEmitter for this) — FtpSession
+    // and DisplaySession don't expose an equivalent signal yet.
+    if (session instanceof SshSession) {
+      session.onUnexpectedClose((reason) => {
+        void this.handleUnexpectedDisconnect(sessionId, session.info, reason);
+      });
+    }
+
     return session.info;
+  }
+
+  /** Called when a session's underlying connection drops on its own (network loss, server restart, etc.) rather than via disconnect(). */
+  private async handleUnexpectedDisconnect(sessionId: string, info: SessionInfo, reason: string): Promise<void> {
+    // Already torn down by an explicit disconnect() that raced this — nothing to do.
+    if (!this.sessions.has(sessionId)) return;
+    this.sessions.delete(sessionId);
+    logger.warn("session-manager", "Session disconnected unexpectedly", { sessionId, reason });
+    await activityLog
+      .record("disconnect", `${info.name} (${info.host}) disconnected unexpectedly`, reason)
+      .catch((err) => logger.warn("session-manager", "Failed to record activity log entry", err));
+    notify("Session disconnected", `${info.name} (${info.host}) disconnected unexpectedly`);
   }
 
   private async resolveProfile(
@@ -149,6 +176,9 @@ export class SessionManager {
     this.sessions.delete(sessionId);
     await session.close();
     logger.info("session-manager", "Disconnected", { sessionId });
+    activityLog
+      .record("disconnect", `Disconnected from ${session.info.name} (${session.info.host})`)
+      .catch((err) => logger.warn("session-manager", "Failed to record activity log entry", err));
   }
 
   list(): SessionInfo[] {

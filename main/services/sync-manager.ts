@@ -10,8 +10,10 @@ import * as path from "path/posix";
 
 import { logger } from "../logger.js";
 
+import { activityLog } from "./activity-log.js";
 import { emitToRenderer } from "./ipc-emitter.js";
 import { localFsService } from "./local-fs.js";
+import { notify } from "./notification-service.js";
 import { sessionManager } from "./session-manager.js";
 import { transferManager } from "./transfer-manager.js";
 import type { BaseSession } from "./sessions/base-session.js";
@@ -153,6 +155,24 @@ export class SyncManager {
       } satisfies SyncProgressEvent);
     }
 
+    // One summary per sync run rather than one per file — the individual
+    // transfers that make it up run silently (see runTransfer below).
+    if (total > 0) {
+      if (failed.length > 0) {
+        const message = `Sync finished with ${failed.length} of ${total} item(s) failed`;
+        activityLog
+          .record("sync-done", message)
+          .catch((err) => logger.warn("sync-manager", "Failed to record activity log entry", err));
+        notify("Sync finished with errors", message);
+      } else {
+        const message = `Sync completed: ${completed} item(s)`;
+        activityLog
+          .record("sync-done", message)
+          .catch((err) => logger.warn("sync-manager", "Failed to record activity log entry", err));
+        notify("Sync complete", message);
+      }
+    }
+
     return { completed, total, failed };
   }
 
@@ -197,6 +217,7 @@ export class SyncManager {
       session.info.sessionId,
       localPath,
       remotePath,
+      { silent: true },
     );
     const item: TransferItem = {
       transferId,

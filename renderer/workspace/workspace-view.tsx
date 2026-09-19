@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button, PanelGroup, Panel, Text, toast } from "@renderer/lib/ui";
-import { TerminalIcon, ArrowDownToLineIcon, NetworkIcon } from "lucide-react";
+import { TerminalIcon, ArrowDownToLineIcon, NetworkIcon, ExternalLinkIcon } from "lucide-react";
 import { getSession } from "@renderer/lib/sessions";
 import { closeOpenSession } from "@renderer/lib/open-sessions-store";
 import { ipc } from "@renderer/lib/ipc";
@@ -15,6 +15,13 @@ import { PortForwardPanel } from "./port-forwards/port-forward-panel";
 
 interface WorkspaceViewProps {
   sessionId: string;
+  /**
+   * Only passed by the main window's AppShell — pops this session into its
+   * own BrowserWindow (see main/windows/session-window.ts) and removes it
+   * from the main window's tab list. Omitted (and so hidden) in the popped-out
+   * window itself, which renders this same component for just that one session.
+   */
+  onPopOut?: () => void;
 }
 
 // Dockable side/bottom panels toggled from the session bar. An array (not a
@@ -24,7 +31,7 @@ type DockPanelId = "terminal" | "forwards";
 
 const OPEN_PANELS_STORAGE_KEY = "nexus:workspace-open-panels";
 
-export function WorkspaceView({ sessionId }: WorkspaceViewProps) {
+export function WorkspaceView({ sessionId, onPopOut }: WorkspaceViewProps) {
   const qc = useQueryClient();
   const session = getSession(sessionId);
 
@@ -85,9 +92,9 @@ export function WorkspaceView({ sessionId }: WorkspaceViewProps) {
           </span>
         </div>
 
-        {session.kind === "file" && (
+        {(session.kind === "file" || onPopOut) && (
           <div className="flex items-center gap-1 shrink-0">
-            {session.supportsTerminal && (
+            {session.kind === "file" && session.supportsTerminal && (
               <Button
                 variant={terminalOpen ? "filled" : "transparent"}
                 size="small"
@@ -98,7 +105,7 @@ export function WorkspaceView({ sessionId }: WorkspaceViewProps) {
                 <TerminalIcon className="size-3.5" />
               </Button>
             )}
-            {session.supportsTerminal && (
+            {session.kind === "file" && session.supportsTerminal && (
               <Button
                 variant={forwardsOpen ? "filled" : "transparent"}
                 size="small"
@@ -109,20 +116,33 @@ export function WorkspaceView({ sessionId }: WorkspaceViewProps) {
                 <NetworkIcon className="size-3.5" />
               </Button>
             )}
-            <Button
-              variant="transparent"
-              size="small"
-              iconOnly
-              onClick={() => setShowTransfers((v) => !v)}
-              aria-label="Toggle transfer queue"
-            >
-              <div className="relative">
-                <ArrowDownToLineIcon className="size-3.5" />
-                {activeCount > 0 && (
-                  <span className="absolute -top-1 -right-1 size-1.5 rounded-full bg-accent" />
-                )}
-              </div>
-            </Button>
+            {session.kind === "file" && (
+              <Button
+                variant="transparent"
+                size="small"
+                iconOnly
+                onClick={() => setShowTransfers((v) => !v)}
+                aria-label="Toggle transfer queue"
+              >
+                <div className="relative">
+                  <ArrowDownToLineIcon className="size-3.5" />
+                  {activeCount > 0 && (
+                    <span className="absolute -top-1 -right-1 size-1.5 rounded-full bg-accent" />
+                  )}
+                </div>
+              </Button>
+            )}
+            {onPopOut && (
+              <Button
+                variant="transparent"
+                size="small"
+                iconOnly
+                onClick={onPopOut}
+                aria-label="Open in new window"
+              >
+                <ExternalLinkIcon className="size-3.5" />
+              </Button>
+            )}
           </div>
         )}
       </div>
