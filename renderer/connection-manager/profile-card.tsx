@@ -62,6 +62,7 @@ export function ProfileCard({
         "hover:border-separator transition-colors cursor-default",
       )}
       style={profile.color ? { borderLeft: `3px solid ${profile.color}` } : undefined}
+      onDoubleClick={() => { if (!connecting) onConnect(); }}
     >
       {/* Protocol badge + host */}
       <div className="flex items-start justify-between gap-2">
@@ -117,7 +118,7 @@ export function ProfileCard({
       )}
 
       {/* Actions */}
-      <div className="flex items-center gap-2 pt-1">
+      <div className="flex items-center gap-2 pt-1" onDoubleClick={(e) => e.stopPropagation()}>
         <Button
           variant="accent"
           size="small"

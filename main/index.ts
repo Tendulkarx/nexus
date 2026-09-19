@@ -52,7 +52,12 @@ async function createMainWindow() {
   // Read display name from package.json (out/main/index.js -> ../../package.json)
   const packageJsonPath = path.join(__dirname, "..", "..", "package.json");
 
-  const minWindowWidth = 720;
+  // 720px used to be the floor, but the Quick Connect bar's fixed-width
+  // fields (protocol/port/username/password/Connect) don't fit next to the
+  // sidebar below that — the Connect button would get clipped with no
+  // scrollbar to reach it. 900px is the smallest width that keeps everything
+  // visible at the sidebar's minimum width.
+  const minWindowWidth = 900;
   const minWindowHeight = 520;
   const windowWidth = 1200;
   const windowHeight = 800;

@@ -17,7 +17,18 @@ export function PanelGroup({ storageKey, className, children, direction = "horiz
       {...props}
     >
       {React.Children.toArray(children).flatMap((child, i) =>
-        i === 0 ? [child] : [<PanelResizeHandle key={`handle-${i}`} className="w-px bg-separator hover:bg-accent/50 transition-colors" />, child],
+        i === 0
+          ? [child]
+          : [
+              <PanelResizeHandle
+                key={`handle-${i}`}
+                className={cn(
+                  "shrink-0 bg-separator hover:bg-accent/50 transition-colors",
+                  direction === "vertical" ? "h-px w-full cursor-row-resize" : "w-px h-full cursor-col-resize",
+                )}
+              />,
+              child,
+            ],
       )}
     </Rx>
   );

@@ -11,9 +11,9 @@
  * This file is the whole theme.
  */
 :root {
-  --bg: #cfe0ff;
-  --bg-secondary: #bcd4ff;
-  --fg: #17223b;
+  --bg: #fafbfc;
+  --bg-secondary: #eef0f4;
+  --fg: #1c2333;
   --theme-accent: #2a6df0;
   --selection: #2a6df0;
 }

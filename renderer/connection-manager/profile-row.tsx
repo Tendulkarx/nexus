@@ -43,7 +43,10 @@ export function ProfileRow({
   onDelete,
 }: ProfileRowProps) {
   return (
-    <div className="group flex items-center gap-3 px-3 py-1 border-b border-separator/50 last:border-b-0 hover:bg-control-subtle transition-colors cursor-default">
+    <div
+      className="group flex items-center gap-3 px-3 py-1 border-b border-separator/50 last:border-b-0 hover:bg-control-subtle transition-colors cursor-default"
+      onDoubleClick={() => { if (!connecting) onConnect(); }}
+    >
       <Badge color={protocolColor} size="small" className="shrink-0 w-14 justify-center">
         {PROTOCOL_LABELS[profile.protocol] ?? profile.protocol.toUpperCase()}
       </Badge>
@@ -61,7 +64,10 @@ export function ProfileRow({
         <HealthDot host={profile.host} port={profile.port} />
         <Text variant="small" color="tertiary" truncate>{formatLastConnected(profile.lastConnectedAt)}</Text>
       </div>
-      <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div
+        className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+        onDoubleClick={(e) => e.stopPropagation()}
+      >
         <Button variant="transparent" size="small" iconOnly onClick={onEdit} aria-label="Edit">
           <EditIcon className="size-3.5 text-secondary" />
         </Button>
@@ -77,6 +83,7 @@ export function ProfileRow({
         size="small"
         className="shrink-0 w-24"
         onClick={onConnect}
+        onDoubleClick={(e) => e.stopPropagation()}
         disabled={connecting}
       >
         {connecting ? <Loader2Icon className="size-3.5 animate-spin" /> : <PlugIcon className="size-3.5" />}
