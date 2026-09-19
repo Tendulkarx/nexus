@@ -2,6 +2,7 @@
  * Registers every IPC handler group. Called once from main/index.ts.
  */
 
+import { registerActivityLogHandlers } from "./activity-log.js";
 import { appHandlers } from "./app.js";
 import { registerConnectionHandlers } from "./connections.js";
 import { registerDisplayHandlers } from "./display.js";
@@ -9,10 +10,13 @@ import { registerEditHandlers } from "./edit.js";
 import { registerFilesystemHandlers } from "./filesystem.js";
 import { registerPortForwardHandlers } from "./port-forwards.js";
 import { registerSessionHandlers } from "./sessions.js";
+import { registerSettingsHandlers } from "./settings.js";
 import { registerSyncHandlers } from "./sync.js";
 import { registerTerminalHandlers } from "./terminal.js";
 import { registerTransferHandlers } from "./transfers.js";
+import { asRecord, reqString } from "./validate.js";
 import { getSettingsWindow, openSettingsWindow } from "../windows/settings-window.js";
+import { openSessionWindow } from "../windows/session-window.js";
 
 import { ipcMain } from "electron";
 import { logger } from "../logger.js";
@@ -34,6 +38,15 @@ export function registerHandlers(): void {
     getSettingsWindow()?.close();
   });
 
+  // Opens sessionId's WorkspaceView in its own BrowserWindow (see
+  // main/windows/session-window.ts) — the session itself stays owned by
+  // session-manager.ts regardless of which window shows it.
+  ipcMain.handle("window:openSessionWindow", async (_event, payload: unknown) => {
+    const obj = asRecord(payload, "window:openSessionWindow");
+    const sessionId = reqString(obj, "sessionId", "window:openSessionWindow");
+    await openSessionWindow(sessionId);
+  });
+
   // Nexus feature handlers
   registerConnectionHandlers();
   registerSessionHandlers();
@@ -44,6 +57,8 @@ export function registerHandlers(): void {
   registerDisplayHandlers();
   registerSyncHandlers();
   registerPortForwardHandlers();
+  registerActivityLogHandlers();
+  registerSettingsHandlers();
 
   logger.info("handlers", "✓ IPC handlers registered");
 }

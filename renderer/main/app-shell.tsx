@@ -15,6 +15,15 @@ import { ConnectionManagerView } from "@renderer/connection-manager/connection-m
 import { WorkspaceView } from "@renderer/workspace/workspace-view";
 import { CommandPalette } from "@renderer/command-palette/command-palette";
 
+async function popOutSession(sessionId: string): Promise<void> {
+  try {
+    await window.nexusAPI.ipc.invoke("window:openSessionWindow", { sessionId });
+    closeOpenSession(sessionId);
+  } catch {
+    // best-effort
+  }
+}
+
 function SessionTab({ sessionId, active }: { sessionId: string; active: boolean }) {
   const session = getSession(sessionId);
 
@@ -117,7 +126,7 @@ export function AppShell() {
         </div>
         {order.map((sessionId) => (
           <div key={sessionId} className={cn("absolute inset-0", active !== sessionId && "hidden")}>
-            <WorkspaceView sessionId={sessionId} />
+            <WorkspaceView sessionId={sessionId} onPopOut={() => void popOutSession(sessionId)} />
           </div>
         ))}
       </div>

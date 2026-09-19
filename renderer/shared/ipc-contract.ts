@@ -358,6 +358,74 @@ export interface SyncProgressEvent {
   total: number;
   relPath: string;
 }
+// ── Activity log (invoke) ───────────────────────────────────────────────────
+//
+// Append-only record of notable cross-session events (connect, disconnect,
+// transfer completed/failed, sync run), persisted across app restarts and
+// capped at a fixed size — see main/services/activity-log.ts.
+
+export type ActivityLogEventType = "connect" | "disconnect" | "transfer-done" | "transfer-error" | "sync-done";
+
+export interface ActivityLogEntry {
+  id: string;
+  /** epoch ms */
+  timestamp: number;
+  type: ActivityLogEventType;
+  message: string;
+  detail?: string;
+}
+
+// activityLog:list → ActivityLogListResult (most recent first)
+export interface ActivityLogListResult {
+  entries: ActivityLogEntry[];
+}
+
+// ── AI terminal suggestions (invoke) ────────────────────────────────────────
+//
+// Per-user, off-by-default setting: the user supplies their own API key for an
+// OpenAI-compatible completions endpoint. Never bundled, never sent anywhere
+// unless enabled and a key is present. The key itself never crosses the IPC
+// boundary to the renderer — only a `hasApiKey` flag does (same pattern as
+// ConnectionProfileDTO's `hasSecret`).
+
+export interface AiSuggestConfig {
+  enabled: boolean;
+  /** Base URL of an OpenAI-compatible chat completions endpoint. */
+  endpoint: string;
+  model: string;
+  hasApiKey: boolean;
+}
+
+export interface AiSuggestConfigInput {
+  enabled: boolean;
+  endpoint: string;
+  model: string;
+  /** Plaintext API key to encrypt & store; omit to leave an existing key unchanged. */
+  apiKey?: string | null;
+}
+
+// settings:getAiSuggestConfig                    → AiSuggestConfig
+// settings:setAiSuggestConfig { config }          → AiSuggestConfig
+export interface SettingsSetAiSuggestConfigRequest {
+  config: AiSuggestConfigInput;
+}
+
+/**
+ * ai:suggest — the actual completion call, gated server-side on
+ * AiSuggestConfig.enabled + a stored key (see main/services/ai-completion-service.ts).
+ * Not yet called from anywhere in the renderer — the terminal-side trigger
+ * (keybinding + inline suggestion rendering) is deferred, see report notes.
+ */
+export interface AiSuggestRequest {
+  partialCommand: string;
+  /** Recent shell history lines, most recent last, for extra context. */
+  recentHistory?: string[];
+}
+export interface AiSuggestResult {
+  /** null when suggestions are disabled, unconfigured, or the request failed. */
+  suggestion: string | null;
+}
+
 // ── Port forwards (invoke + events, per SSH session) ───────────────────────
 
 /**
@@ -495,5 +563,15 @@ export const IPC = {
     resize: "display:resize",
     disconnect: "display:disconnect",
     status: "display:status",
+  },
+  activityLog: {
+    list: "activityLog:list",
+  },
+  settings: {
+    getAiSuggestConfig: "settings:getAiSuggestConfig",
+    setAiSuggestConfig: "settings:setAiSuggestConfig",
+  },
+  ai: {
+    suggest: "ai:suggest",
   },
 } as const;

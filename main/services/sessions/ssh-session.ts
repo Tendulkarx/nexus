@@ -133,12 +133,25 @@ export class SshSession extends BaseSession {
   readonly info: SessionInfo;
   private sftp: SftpClient;
   private jumpClient: Client | null;
+  /** Set by close() before ending the connection, so the "close"/"error" listeners below know this teardown was requested rather than a connection drop. */
+  private closing = false;
+  private unexpectedCloseHandler: ((reason: string) => void) | null = null;
 
   private constructor(sftp: SftpClient, info: SessionInfo, jumpClient: Client | null = null) {
     super();
     this.sftp = sftp;
     this.info = info;
     this.jumpClient = jumpClient;
+  }
+
+  /** Called by SessionManager to learn when the underlying connection drops on its own (network loss, server restart, etc.) rather than via close(). */
+  onUnexpectedClose(handler: (reason: string) => void): void {
+    this.unexpectedCloseHandler = handler;
+  }
+
+  private handleUnderlyingClose(reason: string): void {
+    if (this.closing) return;
+    this.unexpectedCloseHandler?.(reason);
   }
 
   static async connect(
@@ -203,7 +216,10 @@ export class SshSession extends BaseSession {
       supportsTerminal: true,
       kind: "file",
     };
-    return new SshSession(sftp, info, jumpClient);
+    const session = new SshSession(sftp, info, jumpClient);
+    sftp.client.on("close", () => session.handleUnderlyingClose("Connection closed"));
+    sftp.client.on("error", (err: Error) => session.handleUnderlyingClose(err.message));
+    return session;
   }
 
   async list(remotePath: string): Promise<DirListing> {
@@ -356,6 +372,7 @@ export class SshSession extends BaseSession {
   }
 
   async close(): Promise<void> {
+    this.closing = true;
     try {
       await this.sftp.end();
     } catch {

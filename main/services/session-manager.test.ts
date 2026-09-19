@@ -11,6 +11,7 @@ class FakeSshSession {
   static connect = vi.fn();
   info: SessionInfo;
   close = vi.fn().mockResolvedValue(undefined);
+  onUnexpectedClose = vi.fn();
   constructor(info: SessionInfo) {
     this.info = info;
   }
@@ -33,6 +34,11 @@ vi.mock("./connection-store.js", () => ({ connectionStore }));
 
 const credentialVault = { decrypt: vi.fn() };
 vi.mock("./credential-vault.js", () => ({ credentialVault }));
+
+const activityLog = { record: vi.fn().mockResolvedValue(undefined) };
+vi.mock("./activity-log.js", () => ({ activityLog }));
+
+vi.mock("./notification-service.js", () => ({ notify: vi.fn() }));
 
 // BaseSession is a real abstract class (no side effects) — leave unmocked so
 // `session instanceof BaseSession` in session-manager.ts still works against

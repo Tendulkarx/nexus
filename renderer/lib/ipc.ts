@@ -67,6 +67,11 @@ import {
   type PortForwardListRequest,
   type PortForwardRule,
   type PortForwardUpdateEvent,
+  type ActivityLogListResult,
+  type AiSuggestConfig,
+  type AiSuggestConfigInput,
+  type AiSuggestRequest,
+  type AiSuggestResult,
 } from "@shared/ipc-contract";
 
 function invoke<TResult>(channel: string, payload?: unknown): Promise<TResult> {
@@ -216,5 +221,23 @@ export const ipc = {
     list: (req: PortForwardListRequest) => invoke<PortForwardRule[]>(IPC.portForward.list, req),
     onUpdate: (handler: (payload: PortForwardUpdateEvent) => void) =>
       on<PortForwardUpdateEvent>(IPC.portForward.update, handler),
+  },
+
+  // Cross-session activity log
+  activityLog: {
+    list: () => invoke<ActivityLogListResult>(IPC.activityLog.list),
+  },
+
+  // App-level settings (currently: opt-in AI terminal suggestions)
+  settings: {
+    getAiSuggestConfig: () => invoke<AiSuggestConfig>(IPC.settings.getAiSuggestConfig),
+    setAiSuggestConfig: (config: AiSuggestConfigInput) =>
+      invoke<AiSuggestConfig>(IPC.settings.setAiSuggestConfig, { config }),
+  },
+
+  // AI terminal suggestions — completion call. Not yet invoked from anywhere
+  // in the renderer; see report notes on the deferred terminal-side trigger.
+  ai: {
+    suggest: (req: AiSuggestRequest) => invoke<AiSuggestResult>(IPC.ai.suggest, req),
   },
 } as const;

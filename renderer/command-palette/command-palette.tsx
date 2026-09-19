@@ -17,13 +17,18 @@ import {
   SunMoonIcon,
   LogOutIcon,
   Loader2Icon,
+  HistoryIcon,
+  ArrowRightLeftIcon,
+  PlugIcon,
+  PlugZapIcon,
+  RefreshCwIcon,
 } from "lucide-react";
 import { ipc } from "@renderer/lib/ipc";
 import { setSession, getSession } from "@renderer/lib/sessions";
 import { addOpenSession, closeOpenSession, setActiveView, useOpenSessions } from "@renderer/lib/open-sessions-store";
 import { NEW_CONNECTION_EVENT, NEW_FOLDER_EVENT } from "@renderer/lib/menu-events";
-import { Badge, Dialog, Input, toast } from "@renderer/lib/ui";
-import type { ConnectionProfileDTO, Protocol } from "@shared/ipc-contract";
+import { Badge, Dialog, Input, Text, toast } from "@renderer/lib/ui";
+import type { ActivityLogEntry, ActivityLogEventType, ConnectionProfileDTO, Protocol } from "@shared/ipc-contract";
 
 type BadgeColor = "blue" | "green" | "purple" | "orange" | "secondary" | "primary" | "red" | "yellow" | "magenta";
 
@@ -65,10 +70,60 @@ async function toggleTheme(): Promise<void> {
   await window.nexusAPI.nativeTheme.setThemeSource(info.shouldUseDarkColors ? "light" : "dark");
 }
 
+const ACTIVITY_ICONS: Record<ActivityLogEventType, React.ComponentType<{ className?: string }>> = {
+  connect: PlugIcon,
+  disconnect: PlugZapIcon,
+  "transfer-done": ArrowRightLeftIcon,
+  "transfer-error": ArrowRightLeftIcon,
+  "sync-done": RefreshCwIcon,
+};
+
+function ActivityLogDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const activityQuery = useQuery({
+    queryKey: ["activityLog"],
+    queryFn: () => ipc.activityLog.list(),
+    enabled: open,
+  });
+
+  const entries = activityQuery.data?.entries ?? [];
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange} title="Activity Log" size="medium">
+      <div className="flex flex-col divide-y divide-separator">
+        {entries.length === 0 && (
+          <div className="px-4 py-8 text-center">
+            <Text color="tertiary">
+              {activityQuery.isLoading ? "Loading…" : "No activity recorded yet."}
+            </Text>
+          </div>
+        )}
+        {entries.map((entry: ActivityLogEntry) => {
+          const Icon = ACTIVITY_ICONS[entry.type] ?? HistoryIcon;
+          return (
+            <div key={entry.id} className="flex items-start gap-2.5 px-4 py-2.5">
+              <Icon
+                className={`size-3.5 shrink-0 mt-0.5 ${entry.type === "transfer-error" ? "text-destructive" : "text-tertiary"}`}
+              />
+              <div className="min-w-0 flex-1">
+                <Text>{entry.message}</Text>
+                {entry.detail && <Text color="tertiary" variant="small">{entry.detail}</Text>}
+              </div>
+              <Text color="tertiary" variant="small" className="shrink-0 whitespace-nowrap">
+                {new Date(entry.timestamp).toLocaleString()}
+              </Text>
+            </div>
+          );
+        })}
+      </div>
+    </Dialog>
+  );
+}
+
 export function CommandPalette() {
   const [open, setOpen] = React.useState(false);
   const [connectingId, setConnectingId] = React.useState<string | null>(null);
   const [passwordPrompt, setPasswordPrompt] = React.useState<{ profile: ConnectionProfileDTO; password: string } | null>(null);
+  const [showActivityLog, setShowActivityLog] = React.useState(false);
 
   const { order, active } = useOpenSessions();
 
@@ -240,6 +295,17 @@ export function CommandPalette() {
               <SunMoonIcon className="size-3.5 shrink-0" />
               Toggle Theme
             </CommandItem>
+            <CommandItem
+              value="View Activity Log"
+              className={itemClassName}
+              onSelect={() => {
+                setShowActivityLog(true);
+                setOpen(false);
+              }}
+            >
+              <HistoryIcon className="size-3.5 shrink-0" />
+              View Activity Log
+            </CommandItem>
             {active !== "connections" && (
               <CommandItem
                 value="Disconnect Current Session"
@@ -280,6 +346,8 @@ export function CommandPalette() {
           </div>
         </Dialog>
       )}
+
+      <ActivityLogDialog open={showActivityLog} onOpenChange={setShowActivityLog} />
     </>
   );
 }

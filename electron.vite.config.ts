@@ -58,6 +58,7 @@ export default defineConfig({
         input: {
           "main-window": resolve(__dirname, "renderer/main-window.html"),
           "settings-window": resolve(__dirname, "renderer/settings-window.html"),
+          "session-window": resolve(__dirname, "renderer/session-window.html"),
         },
       },
     },

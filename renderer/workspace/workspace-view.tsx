@@ -20,6 +20,7 @@ import {
   TerminalIcon,
   ArrowDownToLineIcon,
   NetworkIcon,
+  ExternalLinkIcon,
 } from "lucide-react";
 import { getSession, removeSession } from "@renderer/lib/sessions";
 import { closeOpenSession } from "@renderer/lib/open-sessions-store";
@@ -33,9 +34,16 @@ import { PortForwardPanel } from "./port-forwards/port-forward-panel";
 
 interface WorkspaceViewProps {
   sessionId: string;
+  /**
+   * Only passed by the main window's AppShell — pops this session into its
+   * own BrowserWindow (see main/windows/session-window.ts) and removes it
+   * from the main window's tab list. Omitted (and so hidden) in the popped-out
+   * window itself, which renders this same component for just that one session.
+   */
+  onPopOut?: () => void;
 }
 
-export function WorkspaceView({ sessionId }: WorkspaceViewProps) {
+export function WorkspaceView({ sessionId, onPopOut }: WorkspaceViewProps) {
   const qc = useQueryClient();
   const session = getSession(sessionId);
 
@@ -111,22 +119,35 @@ export function WorkspaceView({ sessionId }: WorkspaceViewProps) {
             </ToolbarDescription>
           </div>
         </ToolbarContent>
-        {session.kind === "file" && (
+        {(session.kind === "file" || onPopOut) && (
           <ToolbarActions>
-            <Button
-              variant="glass"
-              size="large"
-              iconOnly
-              onClick={() => setShowTransfers((v) => !v)}
-              aria-label="Toggle transfer queue"
-            >
-              <div className="relative">
-                <ArrowDownToLineIcon className="size-4.5" />
-                {activeCount > 0 && (
-                  <span className="absolute -top-1 -right-1 size-2 rounded-full bg-accent" />
-                )}
-              </div>
-            </Button>
+            {session.kind === "file" && (
+              <Button
+                variant="glass"
+                size="large"
+                iconOnly
+                onClick={() => setShowTransfers((v) => !v)}
+                aria-label="Toggle transfer queue"
+              >
+                <div className="relative">
+                  <ArrowDownToLineIcon className="size-4.5" />
+                  {activeCount > 0 && (
+                    <span className="absolute -top-1 -right-1 size-2 rounded-full bg-accent" />
+                  )}
+                </div>
+              </Button>
+            )}
+            {onPopOut && (
+              <Button
+                variant="glass"
+                size="large"
+                iconOnly
+                onClick={onPopOut}
+                aria-label="Open in new window"
+              >
+                <ExternalLinkIcon className="size-4.5" />
+              </Button>
+            )}
           </ToolbarActions>
         )}
       </Toolbar>
