@@ -16,6 +16,15 @@
   --fg: #1c2333;
   --theme-accent: #2a6df0;
   --selection: #2a6df0;
+
+  --cm-keyword: #7c3aed;
+  --cm-string: #15803d;
+  --cm-comment: #6b7280;
+  --cm-number: #b45309;
+  --cm-function: #2a6df0;
+  --cm-property: #0f766e;
+  --cm-type: #0369a1;
+  --cm-tag: #be123c;
 }
 
 .dark {
@@ -24,6 +33,15 @@
   --fg: #e7ecf7;
   --theme-accent: #5b9dff;
   --selection: #5b9dff;
+
+  --cm-keyword: #c084fc;
+  --cm-string: #86efac;
+  --cm-comment: #7d88ab;
+  --cm-number: #fbbf24;
+  --cm-function: #5b9dff;
+  --cm-property: #5eead4;
+  --cm-type: #38bdf8;
+  --cm-tag: #fb7185;
 }
 
 @theme inline {
