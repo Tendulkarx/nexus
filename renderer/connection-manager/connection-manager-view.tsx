@@ -21,12 +21,12 @@ import {
   PlusIcon,
   FolderIcon,
   ServerIcon,
-  FolderPlusIcon,
   Loader2Icon,
   LayoutGridIcon,
   ListIcon,
-  DownloadIcon,
-  UploadIcon,
+  ClockIcon,
+  TagIcon,
+  MoreHorizontalIcon,
 } from "lucide-react";
 import { ipc } from "@renderer/lib/ipc";
 import { setSession } from "@renderer/lib/sessions";
@@ -55,7 +55,27 @@ type BadgeColor = "blue" | "green" | "purple" | "orange" | "secondary" | "primar
 
 type SidebarItem =
   | { kind: "all" }
-  | { kind: "folder"; folder: Folder };
+  | { kind: "recent" }
+  | { kind: "folder"; folder: Folder }
+  | { kind: "protocol"; protocol: Protocol };
+
+const PROTOCOL_LABELS: Record<Protocol, string> = {
+  sftp: "SFTP",
+  ftp: "FTP",
+  ftps: "FTPS",
+  ssh: "SSH",
+  rdp: "RDP",
+};
+
+const PROTOCOL_ORDER: Protocol[] = ["sftp", "ssh", "ftp", "ftps", "rdp"];
+
+const PROTOCOL_DOT: Record<Protocol, string> = {
+  sftp: "bg-blue-500",
+  ftp: "bg-green-500",
+  ftps: "bg-purple-500",
+  ssh: "bg-orange-500",
+  rdp: "bg-fuchsia-500",
+};
 
 function getProtocolColor(protocol: Protocol): BadgeColor {
   switch (protocol) {
@@ -65,6 +85,37 @@ function getProtocolColor(protocol: Protocol): BadgeColor {
     case "ssh": return "orange";
     case "rdp": return "magenta";
   }
+}
+
+function getItemKey(item: SidebarItem): string {
+  switch (item.kind) {
+    case "all": return "all";
+    case "recent": return "recent";
+    case "folder": return `folder:${item.folder.id}`;
+    case "protocol": return `protocol:${item.protocol}`;
+  }
+}
+
+function getViewTitle(item: SidebarItem): string {
+  switch (item.kind) {
+    case "all": return "All Connections";
+    case "recent": return "Recent";
+    case "folder": return item.folder.name;
+    case "protocol": return PROTOCOL_LABELS[item.protocol];
+  }
+}
+
+function matchesSidebarSelection(profile: ConnectionProfileDTO, item: SidebarItem): boolean {
+  switch (item.kind) {
+    case "all": return true;
+    case "recent": return profile.lastConnectedAt != null;
+    case "folder": return profile.folderId === item.folder.id;
+    case "protocol": return profile.protocol === item.protocol;
+  }
+}
+
+function SidebarSectionLabel({ children }: { children: React.ReactNode }) {
+  return <p className="px-3.5 pt-3 pb-1 text-[10px] font-semibold text-tertiary uppercase tracking-wide">{children}</p>;
 }
 
 export function ConnectionManagerView() {
@@ -153,26 +204,49 @@ export function ConnectionManagerView() {
 
   const { profiles = [], folders = [] } = connectionsQuery.data ?? {};
 
-  const sidebarItems: SidebarItem[] = [
+  const recentCount = profiles.filter((p) => p.lastConnectedAt != null).length;
+  const sidebarViewItems: SidebarItem[] = [
     { kind: "all" },
-    ...folders.map((f): SidebarItem => ({ kind: "folder", folder: f })),
+    ...(recentCount > 0 ? [{ kind: "recent" } as SidebarItem] : []),
   ];
-
-  const getItemKey = (item: SidebarItem) =>
-    item.kind === "all" ? "all" : item.folder.id;
+  const sidebarFolderItems: SidebarItem[] = folders.map((f): SidebarItem => ({ kind: "folder", folder: f }));
+  const presentProtocols = PROTOCOL_ORDER.filter((protocol) => profiles.some((p) => p.protocol === protocol));
+  const sidebarProtocolItems: SidebarItem[] = presentProtocols.map((protocol): SidebarItem => ({ kind: "protocol", protocol }));
 
   const allTags = collectTags(profiles);
 
-  const filteredProfiles = profiles.filter((p) => {
+  let filteredProfiles = profiles.filter((p) => {
     const matchesSearch =
       !searchValue ||
       p.name.toLowerCase().includes(searchValue.toLowerCase()) ||
       p.host.toLowerCase().includes(searchValue.toLowerCase());
-    const matchesFolder =
-      selectedSidebarItem.kind === "all" ||
-      p.folderId === selectedSidebarItem.folder.id;
-    return matchesSearch && matchesFolder && matchesTagFilter(p.tags, selectedTags);
+    return matchesSearch && matchesSidebarSelection(p, selectedSidebarItem) && matchesTagFilter(p.tags, selectedTags);
   });
+  if (selectedSidebarItem.kind === "recent") {
+    filteredProfiles = [...filteredProfiles].sort((a, b) => (b.lastConnectedAt ?? 0) - (a.lastConnectedAt ?? 0));
+  }
+
+  async function handleMoreActions() {
+    const CMD_NEW_FOLDER = 1;
+    const CMD_SSH_IMPORT = 2;
+    const CMD_EXPORT = 3;
+    const CMD_IMPORT = 4;
+    const result = await window.nexusAPI.Menu.popup({
+      items: [
+        { label: "New Folder…", commandId: CMD_NEW_FOLDER },
+        { type: "separator" },
+        { label: "Import from SSH Config…", commandId: CMD_SSH_IMPORT },
+        { type: "separator" },
+        { label: "Export Connections…", commandId: CMD_EXPORT },
+        { label: "Import Connections…", commandId: CMD_IMPORT },
+      ],
+    });
+    if (result.commandId === null) return;
+    if (result.commandId === CMD_NEW_FOLDER) setShowNewFolder(true);
+    else if (result.commandId === CMD_SSH_IMPORT) setShowSshConfigImport(true);
+    else if (result.commandId === CMD_EXPORT) openExportDialog();
+    else if (result.commandId === CMD_IMPORT) void handleImportClick();
+  }
 
   function toggleTagFilter(tag: string) {
     setSelectedTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]));
@@ -255,87 +329,134 @@ export function ConnectionManagerView() {
             actions={
               <>
                 <Button
-                  iconOnly
-                  variant="transparent"
+                  variant="accent"
                   size="small"
-                  onClick={() => setShowNewFolder(true)}
-                  aria-label="New folder"
-                >
-                  <FolderPlusIcon className="size-3.5" />
-                </Button>
-                <Button
-                  iconOnly
-                  variant="transparent"
-                  size="small"
-                  onClick={() => setShowSshConfigImport(true)}
-                  aria-label="Import from SSH config"
-                >
-                  <DownloadIcon className="size-3.5" />
-                </Button>
-                <Button
-                  iconOnly
-                  variant="transparent"
-                  size="small"
+                  className="flex-1 min-w-0"
                   onClick={() => setShowNewConnection(true)}
-                  aria-label="New connection"
                 >
-                  <PlusIcon className="size-3.5" />
+                  <PlusIcon className="size-3.5 shrink-0" />
+                  <span className="truncate">New Connection</span>
                 </Button>
                 <Button
                   iconOnly
                   variant="transparent"
                   size="small"
-                  onClick={openExportDialog}
-                  aria-label="Export connections"
+                  onClick={() => void handleMoreActions()}
+                  aria-label="More actions"
                 >
-                  <UploadIcon className="size-3.5" />
-                </Button>
-                <Button
-                  iconOnly
-                  variant="transparent"
-                  size="small"
-                  onClick={() => void handleImportClick()}
-                  aria-label="Import connections"
-                >
-                  <DownloadIcon className="size-3.5" />
+                  <MoreHorizontalIcon className="size-3.5" />
                 </Button>
               </>
             }
           >
+            <SidebarSectionLabel>Views</SidebarSectionLabel>
             <SidebarList
-              items={sidebarItems}
+              items={sidebarViewItems}
               selectedItem={selectedSidebarItem}
               onSelectedItemChange={setSelectedSidebarItem}
               getItemKey={getItemKey}
             >
-              {sidebarItems.map((item) => {
-                if (item.kind === "all") {
-                  return (
-                    <SidebarListItem
-                      key="all"
-                      item={item}
-                      icon={<ServerIcon className="size-4" />}
-                      title="All Connections"
-                      accessory={
-                        <Badge color="secondary">{profiles.length}</Badge>
-                      }
-                    />
-                  );
-                }
-                const count = profiles.filter((p) => p.folderId === item.folder.id).length;
-                return (
-                  <SidebarListItem
-                    key={item.folder.id}
-                    item={item}
-                    icon={<FolderIcon className="size-4" />}
-                    title={item.folder.name}
-                    accessory={
-                      count > 0 ? <Badge color="secondary">{count}</Badge> : undefined
-                    }
-                  />
-                );
-              })}
+              <SidebarListItem
+                item={{ kind: "all" }}
+                icon={<ServerIcon className="size-4" />}
+                title="All Connections"
+                accessory={<Badge color="secondary">{profiles.length}</Badge>}
+              />
+              {recentCount > 0 && (
+                <SidebarListItem
+                  item={{ kind: "recent" }}
+                  icon={<ClockIcon className="size-4" />}
+                  title="Recent"
+                  accessory={<Badge color="secondary">{recentCount}</Badge>}
+                />
+              )}
             </SidebarList>
+
+            {folders.length > 0 && (
+              <>
+                <SidebarSectionLabel>Folders</SidebarSectionLabel>
+                <SidebarList
+                  items={sidebarFolderItems}
+                  selectedItem={selectedSidebarItem}
+                  onSelectedItemChange={setSelectedSidebarItem}
+                  getItemKey={getItemKey}
+                >
+                  {folders.map((folder) => {
+                    const count = profiles.filter((p) => p.folderId === folder.id).length;
+                    return (
+                      <SidebarListItem
+                        key={folder.id}
+                        item={{ kind: "folder", folder }}
+                        icon={<FolderIcon className="size-4" />}
+                        title={folder.name}
+                        accessory={count > 0 ? <Badge color="secondary">{count}</Badge> : undefined}
+                      />
+                    );
+                  })}
+                </SidebarList>
+              </>
+            )}
+
+            {presentProtocols.length > 0 && (
+              <>
+                <SidebarSectionLabel>Protocols</SidebarSectionLabel>
+                <SidebarList
+                  items={sidebarProtocolItems}
+                  selectedItem={selectedSidebarItem}
+                  onSelectedItemChange={setSelectedSidebarItem}
+                  getItemKey={getItemKey}
+                >
+                  {presentProtocols.map((protocol) => {
+                    const count = profiles.filter((p) => p.protocol === protocol).length;
+                    return (
+                      <SidebarListItem
+                        key={protocol}
+                        item={{ kind: "protocol", protocol }}
+                        icon={<span className={cn("block size-2.5 rounded-full", PROTOCOL_DOT[protocol])} />}
+                        title={PROTOCOL_LABELS[protocol]}
+                        accessory={<Badge color="secondary">{count}</Badge>}
+                      />
+                    );
+                  })}
+                </SidebarList>
+              </>
+            )}
+
+            {allTags.length > 0 && (
+              <>
+                <SidebarSectionLabel>Tags</SidebarSectionLabel>
+                <div className="flex flex-col gap-0.5 px-1.5">
+                  {allTags.map((tag) => {
+                    const active = selectedTags.includes(tag);
+                    const count = profiles.filter((p) => p.tags.includes(tag)).length;
+                    return (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => toggleTagFilter(tag)}
+                        className={cn(
+                          "flex items-center gap-2 rounded-medium px-2 py-1.5 text-sm text-left transition-colors",
+                          active ? "bg-accent/15 text-accent" : "text-secondary hover:bg-control-subtle hover:text-primary",
+                        )}
+                      >
+                        <TagIcon className="size-4 shrink-0" />
+                        <span className="flex-1 min-w-0 truncate">{tag}</span>
+                        <Badge color="secondary">{count}</Badge>
+                      </button>
+                    );
+                  })}
+                  {selectedTags.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTags([])}
+                      className="px-2 py-1 text-left text-xs text-tertiary hover:text-secondary underline"
+                    >
+                      Clear tag filter
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
           </Sidebar>
         }
       >
@@ -347,39 +468,13 @@ export function ConnectionManagerView() {
 
           <ScrollArea
             className="flex-1"
-            title={
-              selectedSidebarItem.kind === "all"
-                ? "All Connections"
-                : selectedSidebarItem.folder.name
-            }
             toolbar={
-              <div className="flex items-center justify-between gap-2 px-3 py-1.5 border-b border-separator">
-                <div className="flex items-center gap-1 flex-wrap min-w-0">
-                  {allTags.map((tag) => {
-                    const active = selectedTags.includes(tag);
-                    return (
-                      <button
-                        key={tag}
-                        type="button"
-                        onClick={() => toggleTagFilter(tag)}
-                        className={cn(
-                          "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors",
-                          active ? "bg-accent text-white" : "bg-control text-secondary hover:bg-control/80",
-                        )}
-                      >
-                        {tag}
-                      </button>
-                    );
-                  })}
-                  {selectedTags.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setSelectedTags([])}
-                      className="text-[10px] text-tertiary hover:text-secondary underline"
-                    >
-                      Clear
-                    </button>
-                  )}
+              <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-separator">
+                <div className="flex items-baseline gap-2 min-w-0">
+                  <Text variant="strong" as="h2" truncate>{getViewTitle(selectedSidebarItem)}</Text>
+                  <Text variant="small" color="tertiary" className="shrink-0">
+                    {filteredProfiles.length} connection{filteredProfiles.length === 1 ? "" : "s"}
+                  </Text>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   <Button
@@ -429,7 +524,7 @@ export function ConnectionManagerView() {
                 }
               />
             ) : viewMode === "grid" ? (
-              <div className="p-4 grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3">
+              <div className="p-5 grid grid-cols-[repeat(auto-fit,minmax(260px,340px))] gap-4">
                 {filteredProfiles.map((profile) => (
                   <ProfileCard
                     key={profile.id}

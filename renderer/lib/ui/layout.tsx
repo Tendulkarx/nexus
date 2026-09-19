@@ -49,8 +49,12 @@ export function Sidebar({ searchable, searchPlaceholder, searchValue, onSearchCh
             className="no-drag flex-1 min-w-0"
           />
         )}
-        {actions && <div className="no-drag flex items-center gap-0.5 shrink-0">{actions}</div>}
       </div>
+      {actions && (
+        <div className="no-drag flex items-center gap-1.5 px-2 py-1.5 border-b border-separator shrink-0">
+          {actions}
+        </div>
+      )}
       <div className="flex-1 min-h-0 overflow-y-auto py-1">{children}</div>
     </div>
   );
