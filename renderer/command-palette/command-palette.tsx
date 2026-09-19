@@ -21,7 +21,8 @@ import {
 import { ipc } from "@renderer/lib/ipc";
 import { setSession, getSession } from "@renderer/lib/sessions";
 import { addOpenSession, closeOpenSession, setActiveView, useOpenSessions } from "@renderer/lib/open-sessions-store";
-import { NEW_CONNECTION_EVENT, NEW_FOLDER_EVENT } from "@renderer/lib/menu-events";
+import { NEW_CONNECTION_EVENT, NEW_FOLDER_EVENT, OPEN_PALETTE_EVENT } from "@renderer/lib/menu-events";
+import { toggleTheme } from "@renderer/lib/hooks";
 import { Badge, Dialog, Input, toast } from "@renderer/lib/ui";
 import type { ConnectionProfileDTO, Protocol } from "@shared/ipc-contract";
 
@@ -60,11 +61,6 @@ const groupClassName =
   "[&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wide " +
   "[&_[cmdk-group-heading]]:text-tertiary";
 
-async function toggleTheme(): Promise<void> {
-  const info = await window.nexusAPI.nativeTheme.getInfo();
-  await window.nexusAPI.nativeTheme.setThemeSource(info.shouldUseDarkColors ? "light" : "dark");
-}
-
 export function CommandPalette() {
   const [open, setOpen] = React.useState(false);
   const [connectingId, setConnectingId] = React.useState<string | null>(null);
@@ -88,6 +84,14 @@ export function CommandPalette() {
     }
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, []);
+
+  React.useEffect(() => {
+    function handleOpenEvent() {
+      setOpen(true);
+    }
+    window.addEventListener(OPEN_PALETTE_EVENT, handleOpenEvent);
+    return () => window.removeEventListener(OPEN_PALETTE_EVENT, handleOpenEvent);
   }, []);
 
   const profiles = connectionsQuery.data?.profiles ?? [];

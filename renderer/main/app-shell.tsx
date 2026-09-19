@@ -5,12 +5,14 @@
  * persistent tab strip once at least one session is open.
  */
 import * as React from "react";
-import { XIcon, ServerIcon } from "lucide-react";
+import { XIcon, ServerIcon, CommandIcon, SettingsIcon, SunMoonIcon } from "lucide-react";
 import { cn } from "@renderer/lib/cn";
+import { Button } from "@renderer/lib/ui";
 import { getSession, removeSession } from "@renderer/lib/sessions";
 import { useOpenSessions, closeOpenSession, setActiveView } from "@renderer/lib/open-sessions-store";
 import { ipc } from "@renderer/lib/ipc";
-import { NEW_CONNECTION_EVENT } from "@renderer/lib/menu-events";
+import { NEW_CONNECTION_EVENT, OPEN_PALETTE_EVENT } from "@renderer/lib/menu-events";
+import { toggleTheme } from "@renderer/lib/hooks";
 import { ConnectionManagerView } from "@renderer/connection-manager/connection-manager-view";
 import { WorkspaceView } from "@renderer/workspace/workspace-view";
 import { CommandPalette } from "@renderer/command-palette/command-palette";
@@ -106,6 +108,36 @@ export function AppShell() {
           {order.map((sessionId) => (
             <SessionTab key={sessionId} sessionId={sessionId} active={active === sessionId} />
           ))}
+        </div>
+        <div className="flex-1 min-w-2" />
+        <div className="no-drag flex items-center gap-1 shrink-0">
+          <Button
+            variant="transparent"
+            size="small"
+            iconOnly
+            onClick={() => window.dispatchEvent(new CustomEvent(OPEN_PALETTE_EVENT))}
+            aria-label="Open command palette"
+          >
+            <CommandIcon className="size-3.5" />
+          </Button>
+          <Button
+            variant="transparent"
+            size="small"
+            iconOnly
+            onClick={() => void toggleTheme()}
+            aria-label="Toggle theme"
+          >
+            <SunMoonIcon className="size-3.5" />
+          </Button>
+          <Button
+            variant="transparent"
+            size="small"
+            iconOnly
+            onClick={() => void window.nexusAPI.ipc.invoke("window:openSettings")}
+            aria-label="Open settings"
+          >
+            <SettingsIcon className="size-3.5" />
+          </Button>
         </div>
       </div>
 

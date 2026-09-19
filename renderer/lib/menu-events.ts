@@ -6,3 +6,4 @@
  */
 export const NEW_CONNECTION_EVENT = "nexus:new-connection";
 export const NEW_FOLDER_EVENT = "nexus:new-folder";
+export const OPEN_PALETTE_EVENT = "nexus:open-palette";

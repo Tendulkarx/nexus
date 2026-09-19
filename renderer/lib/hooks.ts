@@ -17,6 +17,12 @@ export function useTheme(): void {
   }, []);
 }
 
+/** Flips between light and dark, ignoring "system" (treated as whatever it currently resolves to). */
+export async function toggleTheme(): Promise<void> {
+  const info = await window.nexusAPI.nativeTheme.getInfo();
+  await window.nexusAPI.nativeTheme.setThemeSource(info.shouldUseDarkColors ? "light" : "dark");
+}
+
 /**
  * A useState that persists to localStorage under `key`, read once on mount.
  * Storage failures (disabled/private-mode) fall back to in-memory state only.
