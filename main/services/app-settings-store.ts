@@ -1,8 +1,8 @@
 /**
- * Persists app-level (not per-connection) user settings. Currently just the
- * opt-in AI terminal-suggestions config; the user's API key is encrypted with
- * the same CredentialVault used for connection secrets and never sent to the
- * renderer in plaintext.
+ * Persists app-level (not per-connection) user settings: opt-in AI
+ * terminal-suggestions config and the native-notifications toggle. The AI
+ * suggestion API key is encrypted with the same CredentialVault used for
+ * connection secrets and never sent to the renderer in plaintext.
  */
 import { DataStore } from "./data-store.js";
 import { credentialVault } from "./credential-vault.js";
@@ -19,10 +19,13 @@ interface AiSuggestSettings {
 
 interface AppSettingsFile {
   aiSuggest: AiSuggestSettings;
+  /** Optional so files saved before this setting existed still parse; treated as enabled when absent. */
+  notificationsEnabled?: boolean;
 }
 
 const DEFAULT_FILE: AppSettingsFile = {
   aiSuggest: { enabled: false, endpoint: "", model: "", apiKeySecret: null },
+  notificationsEnabled: true,
 };
 
 export class AppSettingsStore {
@@ -53,6 +56,18 @@ export class AppSettingsStore {
     const data = await this.store.load();
     if (!data.aiSuggest.enabled || !data.aiSuggest.apiKeySecret) return null;
     return credentialVault.decrypt(data.aiSuggest.apiKeySecret);
+  }
+
+  async getNotificationsEnabled(): Promise<boolean> {
+    const data = await this.store.load();
+    return data.notificationsEnabled ?? true;
+  }
+
+  async setNotificationsEnabled(enabled: boolean): Promise<boolean> {
+    const data = await this.store.load();
+    data.notificationsEnabled = enabled;
+    await this.store.save(data);
+    return enabled;
   }
 }
 

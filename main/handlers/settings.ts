@@ -1,6 +1,6 @@
 /**
- * IPC handlers for app-level settings (currently: opt-in AI terminal
- * suggestions) and the completion call itself.
+ * IPC handlers for app-level settings (opt-in AI terminal suggestions,
+ * native-notifications toggle) and the completion call itself.
  */
 import { ipcMain } from "electron";
 
@@ -26,6 +26,15 @@ export function registerSettingsHandlers(): void {
       apiKey: configObj.apiKey === undefined ? undefined : (configObj.apiKey as string | null),
     };
     return appSettingsStore.setAiSuggestConfig(config);
+  });
+
+  ipcMain.handle(IPC.settings.getNotificationsEnabled, async (): Promise<boolean> => {
+    return appSettingsStore.getNotificationsEnabled();
+  });
+
+  ipcMain.handle(IPC.settings.setNotificationsEnabled, async (_e, payload: unknown): Promise<boolean> => {
+    const obj = asRecord(payload, "settings:setNotificationsEnabled");
+    return appSettingsStore.setNotificationsEnabled(Boolean(obj.enabled));
   });
 
   ipcMain.handle(IPC.ai.suggest, async (_e, payload: unknown): Promise<AiSuggestResult> => {

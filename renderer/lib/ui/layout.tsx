@@ -9,12 +9,27 @@ interface SplitViewProps {
   storageKey?: string;
   sidebar: React.ReactNode;
   children: React.ReactNode;
+  defaultSize?: number;
+  minSize?: number;
+  maxSize?: number;
 }
 
-export function SplitView({ storageKey, sidebar, children }: SplitViewProps) {
+export function SplitView({
+  storageKey,
+  sidebar,
+  children,
+  defaultSize = 20,
+  minSize = 14,
+  maxSize = 40,
+}: SplitViewProps) {
   return (
     <Rx direction="horizontal" autoSaveId={storageKey} className="flex h-full">
-      <RxPanel defaultSize={20} minSize={14} maxSize={40} className="min-w-0 border-r border-separator">
+      <RxPanel
+        defaultSize={defaultSize}
+        minSize={minSize}
+        maxSize={maxSize}
+        className="min-w-0 border-r border-separator"
+      >
         {sidebar}
       </RxPanel>
       <PanelResizeHandle className="w-px bg-separator hover:bg-accent/50 transition-colors" />
@@ -34,7 +49,14 @@ interface SidebarProps {
   children: React.ReactNode;
 }
 
-export function Sidebar({ searchable, searchPlaceholder, searchValue, onSearchChange, actions, children }: SidebarProps) {
+export function Sidebar({
+  searchable,
+  searchPlaceholder,
+  searchValue,
+  onSearchChange,
+  actions,
+  children,
+}: SidebarProps) {
   return (
     <div className="h-full flex flex-col bg-chrome">
       {/* drag-region + left padding clears the inset macOS traffic lights (trafficLightPosition x:16 in main/index.ts) */}
@@ -176,11 +198,7 @@ interface FieldProps extends React.HTMLAttributes<HTMLDivElement> {
 export function Field({ label, description, orientation = "vertical", className, children, ...props }: FieldProps) {
   return (
     <div
-      className={cn(
-        "flex gap-2 py-2",
-        orientation === "horizontal" ? "flex-row items-center" : "flex-col",
-        className,
-      )}
+      className={cn("flex gap-2 py-2", orientation === "horizontal" ? "flex-row items-center" : "flex-col", className)}
       {...props}
     >
       {label ? (

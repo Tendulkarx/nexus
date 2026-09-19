@@ -163,13 +163,13 @@ export class SyncManager {
         activityLog
           .record("sync-done", message)
           .catch((err) => logger.warn("sync-manager", "Failed to record activity log entry", err));
-        notify("Sync finished with errors", message);
+        void notify("Sync finished with errors", message);
       } else {
         const message = `Sync completed: ${completed} item(s)`;
         activityLog
           .record("sync-done", message)
           .catch((err) => logger.warn("sync-manager", "Failed to record activity log entry", err));
-        notify("Sync complete", message);
+        void notify("Sync complete", message);
       }
     }
 

@@ -129,23 +129,50 @@ export interface ConnectionsListResult {
 // folders:rename       { id, name }   → Folder
 // folders:delete       { id }         → { ok: true }
 
-export interface ConnectionsGetRequest { id: string }
-export interface ConnectionsCreateRequest { input: ConnectionInput }
-export interface ConnectionsUpdateRequest { id: string; patch: Partial<ConnectionInput> }
-export interface ConnectionsDeleteRequest { id: string }
-export interface ConnectionsMoveRequest { id: string; folderId: string | null }
-export interface FoldersCreateRequest { name: string; parentId?: string | null }
-export interface FoldersRenameRequest { id: string; name: string }
-export interface FoldersDeleteRequest { id: string }
-export interface OkResult { ok: true }
+export interface ConnectionsGetRequest {
+  id: string;
+}
+export interface ConnectionsCreateRequest {
+  input: ConnectionInput;
+}
+export interface ConnectionsUpdateRequest {
+  id: string;
+  patch: Partial<ConnectionInput>;
+}
+export interface ConnectionsDeleteRequest {
+  id: string;
+}
+export interface ConnectionsMoveRequest {
+  id: string;
+  folderId: string | null;
+}
+export interface FoldersCreateRequest {
+  name: string;
+  parentId?: string | null;
+}
+export interface FoldersRenameRequest {
+  id: string;
+  name: string;
+}
+export interface FoldersDeleteRequest {
+  id: string;
+}
+export interface OkResult {
+  ok: true;
+}
 
 /**
  * connections:checkReachability — a plain TCP connect to host:port with a
  * short timeout, used to show a per-profile health dot. Never sends
  * credentials or performs a protocol handshake.
  */
-export interface ConnectionsCheckReachabilityRequest { host: string; port: number }
-export interface ConnectionsCheckReachabilityResult { reachable: boolean }
+export interface ConnectionsCheckReachabilityRequest {
+  host: string;
+  port: number;
+}
+export interface ConnectionsCheckReachabilityResult {
+  reachable: boolean;
+}
 
 /**
  * connections:export / connections:import — portable backup of profiles +
@@ -214,7 +241,9 @@ export interface SessionInfo {
 // session:connect    SessionConnectRequest → SessionInfo
 // session:disconnect { sessionId }         → OkResult
 // session:list                             → SessionInfo[]
-export interface SessionDisconnectRequest { sessionId: string }
+export interface SessionDisconnectRequest {
+  sessionId: string;
+}
 
 // ── Remote Desktop (rdp — invoke + events) ──────────────────────────────
 //
@@ -237,9 +266,17 @@ export interface DisplayBounds {
 // display:disconnect { sessionId }       → OkResult   (tears down the native view + session)
 // display:status↓ { sessionId, state, message? }  (backend→renderer: "connecting" | "connected" | "error" | "closed")
 
-export interface DisplayConnectRequest { sessionId: string; bounds: DisplayBounds }
-export interface DisplayResizeRequest { sessionId: string; bounds: DisplayBounds }
-export interface DisplayDisconnectRequest { sessionId: string }
+export interface DisplayConnectRequest {
+  sessionId: string;
+  bounds: DisplayBounds;
+}
+export interface DisplayResizeRequest {
+  sessionId: string;
+  bounds: DisplayBounds;
+}
+export interface DisplayDisconnectRequest {
+  sessionId: string;
+}
 export type DisplaySessionState = "connecting" | "connected" | "error" | "closed";
 export interface DisplayStatusEvent {
   sessionId: string;
@@ -254,11 +291,28 @@ export interface DisplayStatusEvent {
 // remote:rename   { sessionId, from, to }        → OkResult
 // remote:delete   { sessionId, path, isDir }     → OkResult
 // remote:readFile { sessionId, path }            → ReadFileResult
-export interface RemoteListRequest { sessionId: string; path: string }
-export interface RemoteMkdirRequest { sessionId: string; path: string }
-export interface RemoteRenameRequest { sessionId: string; from: string; to: string }
-export interface RemoteDeleteRequest { sessionId: string; path: string; isDir: boolean }
-export interface RemoteReadFileRequest { sessionId: string; path: string }
+export interface RemoteListRequest {
+  sessionId: string;
+  path: string;
+}
+export interface RemoteMkdirRequest {
+  sessionId: string;
+  path: string;
+}
+export interface RemoteRenameRequest {
+  sessionId: string;
+  from: string;
+  to: string;
+}
+export interface RemoteDeleteRequest {
+  sessionId: string;
+  path: string;
+  isDir: boolean;
+}
+export interface RemoteReadFileRequest {
+  sessionId: string;
+  path: string;
+}
 
 /** Text preview of a file, size-capped. Binary files return isBinary=true. */
 export interface ReadFileResult {
@@ -278,28 +332,53 @@ export interface ReadFileResult {
 // local:rename   { from, to }         → OkResult
 // local:delete   { path, isDir }      → OkResult
 // local:readFile { path }             → ReadFileResult
-export interface LocalListRequest { path?: string }
-export interface LocalMkdirRequest { path: string }
-export interface LocalRenameRequest { from: string; to: string }
-export interface LocalDeleteRequest { path: string; isDir: boolean }
-export interface LocalReadFileRequest { path: string }
+export interface LocalListRequest {
+  path?: string;
+}
+export interface LocalMkdirRequest {
+  path: string;
+}
+export interface LocalRenameRequest {
+  from: string;
+  to: string;
+}
+export interface LocalDeleteRequest {
+  path: string;
+  isDir: boolean;
+}
+export interface LocalReadFileRequest {
+  path: string;
+}
 
 // ── Remote edit round-trip (invoke + events) ────────────────────────────────
 
 // edit:open { sessionId, path } → OkResult
 //   Downloads the remote file to a temp path, opens it in the OS default editor,
 //   watches for saves, and re-uploads to the server on each save.
-export interface EditOpenRequest { sessionId: string; path: string }
+export interface EditOpenRequest {
+  sessionId: string;
+  path: string;
+}
 // event↓ edit:saved { path, name }
-export interface EditSavedEvent { path: string; name: string }
+export interface EditSavedEvent {
+  path: string;
+  name: string;
+}
 // event↓ edit:error { path, message }
-export interface EditErrorEvent { path: string; message: string }
+export interface EditErrorEvent {
+  path: string;
+  message: string;
+}
 
 // edit:quickSave { sessionId, path, content } → OkResult
 //   Writes `content` to a temp file and uploads it via the session's putFile —
 //   the save path for the in-app quick editor (small text files only; see
 //   ReadFileResult.isBinary / .truncated, used to gate the quick editor UI).
-export interface EditQuickSaveRequest { sessionId: string; path: string; content: string }
+export interface EditQuickSaveRequest {
+  sessionId: string;
+  path: string;
+  content: string;
+}
 
 // ── Remote search / grep (invoke — sftp/ssh sessions only) ─────────────────
 //
@@ -347,22 +426,50 @@ export interface RemotePlace {
 // remotePlaces:removeBookmark { profileId, path }        → RemotePlacesBookmarksResult
 // remotePlaces:listRecents    { profileId }              → RemotePlacesRecentsResult
 // remotePlaces:recordVisit    { profileId, path }        → OkResult
-export interface RemotePlacesListRequest { profileId: string }
-export interface RemotePlacesAddBookmarkRequest { profileId: string; path: string; label?: string }
-export interface RemotePlacesRemoveBookmarkRequest { profileId: string; path: string }
-export interface RemotePlacesRecordVisitRequest { profileId: string; path: string }
-export interface RemotePlacesBookmarksResult { bookmarks: RemotePlace[] }
-export interface RemotePlacesRecentsResult { recents: string[] }
+export interface RemotePlacesListRequest {
+  profileId: string;
+}
+export interface RemotePlacesAddBookmarkRequest {
+  profileId: string;
+  path: string;
+  label?: string;
+}
+export interface RemotePlacesRemoveBookmarkRequest {
+  profileId: string;
+  path: string;
+}
+export interface RemotePlacesRecordVisitRequest {
+  profileId: string;
+  path: string;
+}
+export interface RemotePlacesBookmarksResult {
+  bookmarks: RemotePlace[];
+}
+export interface RemotePlacesRecentsResult {
+  recents: string[];
+}
 
 // ── Transfers (invoke + events) ──────────────────────────────────────────────
 
 // transfer:upload   { sessionId, localPath, remotePath } → { transferId }
 // transfer:download { sessionId, remotePath, localPath } → { transferId }
 // transfer:cancel   { transferId }                        → OkResult
-export interface TransferUploadRequest { sessionId: string; localPath: string; remotePath: string }
-export interface TransferDownloadRequest { sessionId: string; remotePath: string; localPath: string }
-export interface TransferCancelRequest { transferId: string }
-export interface TransferStartResult { transferId: string }
+export interface TransferUploadRequest {
+  sessionId: string;
+  localPath: string;
+  remotePath: string;
+}
+export interface TransferDownloadRequest {
+  sessionId: string;
+  remotePath: string;
+  localPath: string;
+}
+export interface TransferCancelRequest {
+  transferId: string;
+}
+export interface TransferStartResult {
+  transferId: string;
+}
 
 /** Snapshot of a transfer, mirrored to the renderer via events. */
 export interface TransferItem {
@@ -392,8 +499,13 @@ export interface TransferProgressEvent {
   total: number;
   bytesPerSec: number;
 }
-export interface TransferDoneEvent { transferId: string }
-export interface TransferErrorEvent { transferId: string; message: string }
+export interface TransferDoneEvent {
+  transferId: string;
+}
+export interface TransferErrorEvent {
+  transferId: string;
+  message: string;
+}
 
 // ── Directory sync (invoke + events) ────────────────────────────────────────
 //
@@ -509,6 +621,12 @@ export interface SettingsSetAiSuggestConfigRequest {
   config: AiSuggestConfigInput;
 }
 
+// settings:getNotificationsEnabled                → boolean
+// settings:setNotificationsEnabled { enabled }     → boolean
+export interface SettingsSetNotificationsEnabledRequest {
+  enabled: boolean;
+}
+
 /**
  * ai:suggest — the actual completion call, gated server-side on
  * AiSuggestConfig.enabled + a stored key (see main/services/ai-completion-service.ts).
@@ -564,11 +682,17 @@ export interface PortForwardStartRequest {
   dstHost?: string;
   dstPort?: number;
 }
-export interface PortForwardStopRequest { id: string }
-export interface PortForwardListRequest { sessionId: string }
+export interface PortForwardStopRequest {
+  id: string;
+}
+export interface PortForwardListRequest {
+  sessionId: string;
+}
 
 // event↓ portForward:update { rule }  (connection count/bytes/state changed)
-export interface PortForwardUpdateEvent { rule: PortForwardRule }
+export interface PortForwardUpdateEvent {
+  rule: PortForwardRule;
+}
 
 // ── SSH config import (invoke) ──────────────────────────────────────────────
 //
@@ -613,26 +737,54 @@ export type SnippetInput = Omit<CommandSnippet, "id" | "createdAt">;
 export interface SnippetsListResult {
   snippets: CommandSnippet[];
 }
-export interface SnippetCreateRequest { input: SnippetInput }
-export interface SnippetUpdateRequest { id: string; patch: Partial<SnippetInput> }
-export interface SnippetDeleteRequest { id: string }
+export interface SnippetCreateRequest {
+  input: SnippetInput;
+}
+export interface SnippetUpdateRequest {
+  id: string;
+  patch: Partial<SnippetInput>;
+}
+export interface SnippetDeleteRequest {
+  id: string;
+}
 
 // ── Terminal (invoke + events) ────────────────────────────────────────────────
 
 // terminal:open   { sessionId, cols, rows } → { terminalId }
 // terminal:resize { terminalId, cols, rows } → OkResult
 // terminal:close  { terminalId }             → OkResult
-export interface TerminalOpenRequest { sessionId: string; cols: number; rows: number }
-export interface TerminalOpenResult { terminalId: string }
-export interface TerminalResizeRequest { terminalId: string; cols: number; rows: number }
-export interface TerminalCloseRequest { terminalId: string }
+export interface TerminalOpenRequest {
+  sessionId: string;
+  cols: number;
+  rows: number;
+}
+export interface TerminalOpenResult {
+  terminalId: string;
+}
+export interface TerminalResizeRequest {
+  terminalId: string;
+  cols: number;
+  rows: number;
+}
+export interface TerminalCloseRequest {
+  terminalId: string;
+}
 
 // event↑ terminal:input { terminalId, data }
-export interface TerminalInputEvent { terminalId: string; data: string }
+export interface TerminalInputEvent {
+  terminalId: string;
+  data: string;
+}
 // event↓ terminal:data  { terminalId, chunk }   (chunk is a utf-8 string)
-export interface TerminalDataEvent { terminalId: string; chunk: string }
+export interface TerminalDataEvent {
+  terminalId: string;
+  chunk: string;
+}
 // event↓ terminal:exit  { terminalId, code }
-export interface TerminalExitEvent { terminalId: string; code: number | null }
+export interface TerminalExitEvent {
+  terminalId: string;
+  code: number | null;
+}
 
 // ── Channel name constants (single source of truth for both layers) ───────────
 
@@ -736,6 +888,8 @@ export const IPC = {
   settings: {
     getAiSuggestConfig: "settings:getAiSuggestConfig",
     setAiSuggestConfig: "settings:setAiSuggestConfig",
+    getNotificationsEnabled: "settings:getNotificationsEnabled",
+    setNotificationsEnabled: "settings:setNotificationsEnabled",
   },
   ai: {
     suggest: "ai:suggest",

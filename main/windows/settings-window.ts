@@ -14,10 +14,10 @@ export async function openSettingsWindow(): Promise<void> {
   logger.info("settings", "Creating settings window");
 
   settingsWindow = new BrowserWindow({
-    width: 520,
-    height: 300,
-    minWidth: 400,
-    minHeight: 200,
+    width: 720,
+    height: 520,
+    minWidth: 620,
+    minHeight: 420,
     title: "Settings",
     show: false,
     center: true,

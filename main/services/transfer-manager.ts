@@ -27,12 +27,7 @@ export class TransferManager {
   private controllers = new Map<string, AbortController>();
   private active = new Map<string, { transferred: number; total: number }>();
 
-  start(
-    direction: TransferDirection,
-    sessionId: string,
-    localPath: string,
-    remotePath: string,
-  ): string {
+  start(direction: TransferDirection, sessionId: string, localPath: string, remotePath: string): string {
     // Fire-and-forget; progress and completion flow through events.
     return this.startTracked(direction, sessionId, localPath, remotePath).transferId;
   }
@@ -126,7 +121,7 @@ export class TransferManager {
         activityLog
           .record("transfer-done", `${verb} ${name}`)
           .catch((err) => logger.warn("transfer-manager", "Failed to record activity log entry", err));
-        notify("Transfer complete", `${verb} ${name}`);
+        void notify("Transfer complete", `${verb} ${name}`);
       }
       return { ok: true };
     } catch (err) {
@@ -139,7 +134,7 @@ export class TransferManager {
         activityLog
           .record("transfer-error", `Failed to transfer ${name}`, message)
           .catch((err2) => logger.warn("transfer-manager", "Failed to record activity log entry", err2));
-        notify("Transfer failed", `${name}: ${message}`);
+        void notify("Transfer failed", `${name}: ${message}`);
       }
       return { ok: false, message };
     } finally {

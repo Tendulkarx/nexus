@@ -87,7 +87,7 @@ export class SessionManager {
     await activityLog
       .record("disconnect", `${info.name} (${info.host}) disconnected unexpectedly`, reason)
       .catch((err) => logger.warn("session-manager", "Failed to record activity log entry", err));
-    notify("Session disconnected", `${info.name} (${info.host}) disconnected unexpectedly`);
+    void notify("Session disconnected", `${info.name} (${info.host}) disconnected unexpectedly`);
   }
 
   private async resolveProfile(

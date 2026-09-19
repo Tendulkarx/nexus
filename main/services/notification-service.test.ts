@@ -13,8 +13,14 @@ class NotificationCtor {
 let windows: Array<{ isDestroyed: () => boolean; isFocused: () => boolean }> = [];
 
 vi.mock("electron", () => ({
+  app: { getPath: () => "/tmp/nexus-test-userdata", getVersion: () => "0.0.0-test" },
   BrowserWindow: { getAllWindows: () => windows },
   Notification: NotificationCtor,
+  safeStorage: {
+    isEncryptionAvailable: () => true,
+    encryptString: (s: string) => Buffer.from(s),
+    decryptString: (b: Buffer) => b.toString(),
+  },
 }));
 
 describe("notify", () => {
@@ -27,7 +33,7 @@ describe("notify", () => {
     windows = [{ isDestroyed: () => false, isFocused: () => false }];
     const { notify } = await import("./notification-service.js");
 
-    notify("Title", "Body");
+    await notify("Title", "Body");
 
     expect(notificationCtorSpy).toHaveBeenCalledWith({ title: "Title", body: "Body" });
     expect(notificationShow).toHaveBeenCalledTimes(1);
@@ -37,7 +43,7 @@ describe("notify", () => {
     windows = [{ isDestroyed: () => false, isFocused: () => true }];
     const { notify } = await import("./notification-service.js");
 
-    notify("Title", "Body");
+    await notify("Title", "Body");
 
     expect(notificationCtorSpy).not.toHaveBeenCalled();
   });
@@ -46,7 +52,7 @@ describe("notify", () => {
     windows = [];
     const { notify } = await import("./notification-service.js");
 
-    notify("Title", "Body");
+    await notify("Title", "Body");
 
     expect(notificationCtorSpy).toHaveBeenCalledTimes(1);
   });
@@ -58,6 +64,6 @@ describe("notify", () => {
     });
     const { notify } = await import("./notification-service.js");
 
-    expect(() => notify("Title", "Body")).not.toThrow();
+    await expect(notify("Title", "Body")).resolves.not.toThrow();
   });
 });
