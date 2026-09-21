@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { PanelGroup, Panel } from "@renderer/lib/ui";
 import type { FsEntry, SessionInfo } from "@shared/ipc-contract";
 import { ipc } from "@renderer/lib/ipc";
+import { useRemoteCwd } from "@renderer/lib/remote-cwd-store";
 import { FilePane } from "./file-pane";
 import { SyncDialog } from "./sync-dialog";
 import type { useTransfers } from "@renderer/lib/use-transfers";
@@ -31,6 +32,12 @@ export function DualPaneView({ session, transferState }: DualPaneViewProps) {
       setLocalPath(localRootsQuery.data.home);
     }
   }, [localRootsQuery.data, localPath]);
+
+  // Terminal->file-pane cwd following, driven by OSC 7 (see remote-cwd-store.ts).
+  const remoteCwd = useRemoteCwd(session.sessionId);
+  React.useEffect(() => {
+    if (remoteCwd) setRemotePath(remoteCwd.path);
+  }, [remoteCwd]);
 
   async function handleUpload(localFilePath: string, name: string) {
     const remoteTarget = remotePath.endsWith("/")

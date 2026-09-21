@@ -8,6 +8,7 @@ import { logger } from "../logger.js";
 
 import { emitToRenderer } from "./ipc-emitter.js";
 import { sessionManager } from "./session-manager.js";
+import { OSC7_SHELL_INTEGRATION_SNIPPET } from "./shell-integration.js";
 
 import { IPC } from "../../renderer/shared/ipc-contract.js";
 import type { TerminalDataEvent, TerminalExitEvent } from "@shared/ipc-contract";
@@ -38,14 +39,22 @@ export class SshTerminalService {
     channel.on("close", () => this.handleExit(terminalId, null));
     channel.on("exit", (code: number | null) => this.handleExit(terminalId, code));
 
+    // Set up OSC 7 cwd reporting before any user onConnectCommand, so a `cd`
+    // inside that command is picked up too — both run unconditionally, the
+    // hook isn't an opt-in setting.
+    this.writeCommandLines(channel, OSC7_SHELL_INTEGRATION_SNIPPET);
     if (session.onConnectCommand) {
-      for (const line of session.onConnectCommand.split("\n").map((l) => l.trim()).filter(Boolean)) {
-        channel.write(`${line}\n`);
-      }
+      this.writeCommandLines(channel, session.onConnectCommand);
     }
 
     logger.info("ssh-terminal", "Opened terminal", { terminalId, sessionId });
     return terminalId;
+  }
+
+  private writeCommandLines(channel: ClientChannel, text: string): void {
+    for (const line of text.split("\n").map((l) => l.trim()).filter(Boolean)) {
+      channel.write(`${line}\n`);
+    }
   }
 
   private enqueue(terminalId: string, chunk: string): void {
