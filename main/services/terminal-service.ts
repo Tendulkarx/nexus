@@ -54,7 +54,7 @@ export class TerminalService {
     return terminalId;
   }
 
-  private writeCommandLines(channel: ClientChannel, text: string): void {
+  private writeCommandLines(channel: TerminalChannel, text: string): void {
     for (const line of text.split("\n").map((l) => l.trim()).filter(Boolean)) {
       channel.write(`${line}\n`);
     }
