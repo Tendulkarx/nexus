@@ -28,6 +28,8 @@ std::map<std::string, std::unique_ptr<nexus::DisplaySession>> g_sessions;
 // One persistent status-callback reference per session, kept alive until
 // destroySession (or process exit) so async status events can still find it.
 std::map<std::string, std::shared_ptr<Napi::FunctionReference>> g_statusCallbacks;
+// Same idea, for the certificate-trust prompt (see resolveCertificateTrust).
+std::map<std::string, std::shared_ptr<Napi::FunctionReference>> g_certificateVerifyCallbacks;
 
 nexus::DisplayBounds ReadBounds(const Napi::Object& obj) {
   nexus::DisplayBounds b;
@@ -56,6 +58,7 @@ Napi::Value CreateSession(const Napi::CallbackInfo& info) {
   Napi::Buffer<uint8_t> handleBuf = opts.Get("nativeWindowHandle").As<Napi::Buffer<uint8_t>>();
   nexus::DisplayBounds bounds = ReadBounds(opts.Get("bounds").As<Napi::Object>());
   Napi::Function onStatusJs = opts.Get("onStatus").As<Napi::Function>();
+  Napi::Function onCertificateVerifyJs = opts.Get("onCertificateVerify").As<Napi::Function>();
 
   if (g_sessions.count(sessionId)) {
     Napi::Error::New(env, "A display session with this sessionId is already active").ThrowAsJavaScriptException();
@@ -71,13 +74,15 @@ Napi::Value CreateSession(const Napi::CallbackInfo& info) {
 
   auto statusRef = std::make_shared<Napi::FunctionReference>(Napi::Persistent(onStatusJs));
   g_statusCallbacks[sessionId] = statusRef;
+  auto certVerifyRef = std::make_shared<Napi::FunctionReference>(Napi::Persistent(onCertificateVerifyJs));
+  g_certificateVerifyCallbacks[sessionId] = certVerifyRef;
 
   auto session = std::make_unique<nexus::DisplaySession>(sessionId, nativeWindowHandle);
   nexus::DisplaySession* sessionPtr = session.get();
   g_sessions[sessionId] = std::move(session);
 
-  // Captured by value where cheap; env/statusRef captured for the delayed
-  // JS callback (see the threading note above for why this is safe).
+  // Captured by value where cheap; env/statusRef/certVerifyRef captured for
+  // the delayed JS callback (see the threading note above for why this is safe).
   bool started = sessionPtr->Connect(
       protocol, host, port, username, secret, bounds,
       [env, statusRef, sessionId](bool connected, const std::string& message) {
@@ -85,11 +90,17 @@ Napi::Value CreateSession(const Napi::CallbackInfo& info) {
         Napi::HandleScope scope(env);
         statusRef->Value().Call(
             {Napi::String::New(env, connected ? "connected" : "error"), Napi::String::New(env, message)});
+      },
+      [env, certVerifyRef, sessionId](const std::string& fingerprint) {
+        if (!g_certificateVerifyCallbacks.count(sessionId)) return;  // session torn down since
+        Napi::HandleScope scope(env);
+        certVerifyRef->Value().Call({Napi::String::New(env, fingerprint)});
       });
 
   if (!started) {
     g_sessions.erase(sessionId);
     g_statusCallbacks.erase(sessionId);
+    g_certificateVerifyCallbacks.erase(sessionId);
   }
 
   return env.Undefined();
@@ -113,6 +124,16 @@ Napi::Value DestroySession(const Napi::CallbackInfo& info) {
     g_sessions.erase(it);
   }
   g_statusCallbacks.erase(sessionId);
+  g_certificateVerifyCallbacks.erase(sessionId);
+  return env.Undefined();
+}
+
+Napi::Value ResolveCertificateTrust(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  std::string sessionId = info[0].As<Napi::String>();
+  bool trusted = info[1].As<Napi::Boolean>();
+  auto it = g_sessions.find(sessionId);
+  if (it != g_sessions.end()) it->second->ResolveCertificateTrust(trusted);
   return env.Undefined();
 }
 
@@ -120,6 +141,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("createSession", Napi::Function::New(env, CreateSession));
   exports.Set("resizeSession", Napi::Function::New(env, ResizeSession));
   exports.Set("destroySession", Napi::Function::New(env, DestroySession));
+  exports.Set("resolveCertificateTrust", Napi::Function::New(env, ResolveCertificateTrust));
   return exports;
 }
 

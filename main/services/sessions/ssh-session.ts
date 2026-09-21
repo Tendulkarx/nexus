@@ -31,10 +31,10 @@ import type {
  */
 async function verifyHostKey(host: string, port: number, key: Buffer): Promise<boolean> {
   const fingerprint = fingerprintKey(key);
-  const stored = await knownHostsStore.get(host, port);
+  const stored = await knownHostsStore.get("ssh", host, port);
 
   if (!stored) {
-    await knownHostsStore.trust(host, port, fingerprint);
+    await knownHostsStore.trust("ssh", host, port, fingerprint);
     logger.info("ssh", "Trusting new host key on first use", { host, port });
     return true;
   }
@@ -58,7 +58,7 @@ async function verifyHostKey(host: string, port: number, key: Buffer): Promise<b
   });
 
   if (result.response === 1) {
-    await knownHostsStore.trust(host, port, fingerprint);
+    await knownHostsStore.trust("ssh", host, port, fingerprint);
     logger.warn("ssh", "User accepted new host key after mismatch warning", { host, port });
     return true;
   }

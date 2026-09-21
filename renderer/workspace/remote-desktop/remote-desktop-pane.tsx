@@ -15,8 +15,8 @@
 import * as React from "react";
 import { Loader2Icon, MonitorIcon } from "lucide-react";
 import { ipc } from "@renderer/lib/ipc";
-import { Text } from "@renderer/lib/ui";
-import type { SessionInfo, DisplaySessionState } from "@shared/ipc-contract";
+import { AlertDialog, Text } from "@renderer/lib/ui";
+import type { SessionInfo, DisplaySessionState, DisplayTrustPromptEvent } from "@shared/ipc-contract";
 
 interface RemoteDesktopPaneProps {
   session: SessionInfo;
@@ -28,6 +28,7 @@ export function RemoteDesktopPane({ session }: RemoteDesktopPaneProps) {
   const visibleRef = React.useRef(true);
   const [state, setState] = React.useState<DisplaySessionState>("connecting");
   const [message, setMessage] = React.useState<string | undefined>(undefined);
+  const [trustPrompt, setTrustPrompt] = React.useState<DisplayTrustPromptEvent | null>(null);
 
   const sendBounds = React.useCallback(() => {
     const el = containerRef.current;
@@ -56,6 +57,22 @@ export function RemoteDesktopPane({ session }: RemoteDesktopPaneProps) {
     });
     return off;
   }, [session.sessionId]);
+
+  React.useEffect(() => {
+    const off = ipc.display.onTrustPrompt((event) => {
+      if (event.sessionId !== session.sessionId) return;
+      setTrustPrompt(event);
+    });
+    return off;
+  }, [session.sessionId]);
+
+  const respondToTrustPrompt = React.useCallback(
+    (trusted: boolean) => {
+      setTrustPrompt(null);
+      void ipc.display.trustDecision({ sessionId: session.sessionId, trusted }).catch(() => {});
+    },
+    [session.sessionId],
+  );
 
   React.useEffect(() => {
     const el = containerRef.current;
@@ -108,6 +125,35 @@ export function RemoteDesktopPane({ session }: RemoteDesktopPaneProps) {
           )}
           {state === "closed" && <Text color="secondary">Remote desktop session closed</Text>}
         </div>
+      )}
+
+      {trustPrompt && !trustPrompt.changed && (
+        <AlertDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) respondToTrustPrompt(false);
+          }}
+          title="Verify Remote Desktop Certificate"
+          description={`Nexus hasn't connected to ${session.host} before. Its certificate fingerprint is:\n\n${trustPrompt.fingerprint}\n\nTrust this certificate and continue connecting?`}
+          confirmLabel="Trust & Connect"
+          confirmVariant="accent"
+          onConfirm={() => respondToTrustPrompt(true)}
+        />
+      )}
+
+      {trustPrompt && trustPrompt.changed && (
+        <AlertDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) respondToTrustPrompt(false);
+          }}
+          title="Certificate Changed — Possible Security Risk"
+          description={`The certificate presented by ${session.host} has changed since you last connected and trusted it.\n\nPreviously trusted:\n${trustPrompt.previousFingerprint}\n\nNow presenting:\n${trustPrompt.fingerprint}\n\nThis can mean the server was reinstalled or its certificate was rotated — or it can mean someone is intercepting your connection. Only continue if you're sure this is expected.`}
+          confirmLabel="I understand the risk — Connect Anyway"
+          confirmVariant="destructive"
+          danger
+          onConfirm={() => respondToTrustPrompt(true)}
+        />
       )}
     </div>
   );

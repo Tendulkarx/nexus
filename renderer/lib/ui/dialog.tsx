@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Dialog as RxDialog, AlertDialog as RxAlertDialog } from "radix-ui";
-import { XIcon } from "lucide-react";
+import { TriangleAlertIcon, XIcon } from "lucide-react";
 import { cn } from "../cn";
 import { Button } from "./primitives";
 
@@ -86,6 +86,8 @@ interface AlertDialogProps {
   description?: string;
   confirmLabel?: string;
   confirmVariant?: "accent" | "destructive";
+  /** Renders a visibly alarming variant (red border/ring, warning icon) — for genuine security warnings like a changed RDP/SSH fingerprint, not routine confirmations. */
+  danger?: boolean;
   onConfirm: () => void;
 }
 
@@ -96,16 +98,29 @@ export function AlertDialog({
   description,
   confirmLabel = "Confirm",
   confirmVariant = "accent",
+  danger = false,
   onConfirm,
 }: AlertDialogProps) {
   return (
     <RxAlertDialog.Root open={open} onOpenChange={onOpenChange}>
       <RxAlertDialog.Portal>
         <RxAlertDialog.Overlay className="fixed inset-0 z-50 bg-black/40" />
-        <RxAlertDialog.Content className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-card border border-field bg-popover p-4 shadow-xl outline-none">
-          <RxAlertDialog.Title className="text-sm font-semibold text-primary">{title}</RxAlertDialog.Title>
+        <RxAlertDialog.Content
+          className={cn(
+            "fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-card border p-4 shadow-xl outline-none",
+            danger ? "border-support-red ring-2 ring-support-red/40 bg-popover" : "border-field bg-popover",
+          )}
+        >
+          <div className="flex items-center gap-2">
+            {danger && <TriangleAlertIcon className="size-4 shrink-0 text-support-red" />}
+            <RxAlertDialog.Title
+              className={cn("text-sm font-semibold", danger ? "text-support-red" : "text-primary")}
+            >
+              {title}
+            </RxAlertDialog.Title>
+          </div>
           {description && (
-            <RxAlertDialog.Description className="mt-2 text-sm text-secondary">
+            <RxAlertDialog.Description className="mt-2 whitespace-pre-line text-sm text-secondary">
               {description}
             </RxAlertDialog.Description>
           )}

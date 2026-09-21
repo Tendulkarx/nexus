@@ -36,6 +36,15 @@ export interface NativeDisplayConnectOptions {
   nativeWindowHandle: Buffer;
   bounds: DisplayBounds;
   onStatus: (state: DisplaySessionState, message?: string) => void;
+  /**
+   * Called when the RDP backend needs a trust decision for the server's TLS
+   * certificate (first connection, or a changed fingerprint) — see
+   * rdp_backend.mm's NexusVerifyCertificateEx. The native connect handshake
+   * blocks on its own background thread until resolveCertificateTrust() is
+   * called for this sessionId, so this must not throw/hang indefinitely on
+   * the JS side either.
+   */
+  onCertificateVerify: (fingerprint: string) => void;
 }
 
 interface NativeAddon {
@@ -49,9 +58,11 @@ interface NativeAddon {
     nativeWindowHandle: Buffer;
     bounds: DisplayBounds;
     onStatus: (state: string, message?: string) => void;
+    onCertificateVerify: (fingerprint: string) => void;
   }): void;
   resizeSession(sessionId: string, bounds: DisplayBounds): void;
   destroySession(sessionId: string): void;
+  resolveCertificateTrust(sessionId: string, trusted: boolean): void;
 }
 
 let addon: NativeAddon | null = null;
@@ -95,11 +106,24 @@ export const nativeDisplayHost = {
       nativeWindowHandle: options.nativeWindowHandle,
       bounds: options.bounds,
       onStatus: (state, message) => options.onStatus(state as DisplaySessionState, message),
+      onCertificateVerify: options.onCertificateVerify,
     });
   },
 
   resize(sessionId: string, bounds: DisplayBounds): void {
     loadAddon().resizeSession(sessionId, bounds);
+  },
+
+  /** Answers a pending onCertificateVerify prompt, waking the backend thread blocked inside the native connect handshake. */
+  resolveCertificateTrust(sessionId: string, trusted: boolean): void {
+    // Best-effort, same rationale as destroy() below — the addon must already
+    // be loaded for a prompt to have fired at all.
+    if (!addon) return;
+    try {
+      addon.resolveCertificateTrust(sessionId, trusted);
+    } catch {
+      // ignore — session may already be gone
+    }
   },
 
   destroy(sessionId: string): void {

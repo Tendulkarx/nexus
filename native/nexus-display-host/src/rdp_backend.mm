@@ -36,6 +36,10 @@ struct NexusRdpContext {
   rdpContext parent;
   nexus::FrameCallback* onFrame;
   nexus::DisplayStatusCallback* onStatus;
+  nexus::CertificateVerifyCallback* onCertificateVerify;
+  // Not owned — lets NexusVerifyCertificateEx block the connect handshake via
+  // RdpBackend::AwaitCertificateTrust (see rdp_backend.h).
+  nexus::RdpBackend* backend;
   // Set once the "disp" (Display Control, MS-RDPEDISP) dynamic virtual
   // channel connects — see NexusChannelConnected. Null (and resize requests
   // silently no-op) if the server doesn't support it. freerdp_context_new
@@ -97,12 +101,13 @@ BOOL NexusPreConnect(freerdp* instance) {
   freerdp_settings_set_bool(settings, FreeRDP_NetworkAutoDetect, FALSE);
   freerdp_settings_set_bool(settings, FreeRDP_SupportHeartbeatPdu, FALSE);
   freerdp_settings_set_bool(settings, FreeRDP_SupportMultitransport, FALSE);
-  // Accept the server's certificate without prompting. This is a real
-  // security tradeoff (no MITM protection on the RDP leg, unlike the SSH
-  // host-key verification Nexus already does) — worth revisiting once basic
-  // connectivity is proven, by wiring instance->VerifyCertificateEx to a
-  // TOFU flow analogous to main/services/known-hosts-store.ts.
-  freerdp_settings_set_bool(settings, FreeRDP_IgnoreCertificate, TRUE);
+  // Certificate verification is real (see NexusVerifyCertificateEx /
+  // RdpBackend::AwaitCertificateTrust below) — a trust-on-first-use flow
+  // mirroring main/services/known-hosts-store.ts's SSH host-key handling.
+  // IgnoreCertificate must stay FALSE (already FreeRDP's default; set
+  // explicitly so this doesn't silently regress) so instance->VerifyCertificateEx
+  // actually gets invoked instead of skipped.
+  freerdp_settings_set_bool(settings, FreeRDP_IgnoreCertificate, FALSE);
   return TRUE;
 }
 
@@ -141,6 +146,46 @@ void NexusPostDisconnect(freerdp* instance) {
   if (instance->context->gdi) gdi_free(instance);
 }
 
+// FreeRDP 3.x's certificate-verification hook (freerdp/freerdp.h's
+// pVerifyCertificateEx) — called synchronously during freerdp_connect(),
+// once per connection attempt (not just the first), for every certificate
+// the server presents. `fingerprint` is FreeRDP's own hash of it; `flags`
+// (VERIFY_CERT_FLAG_CHANGED/MISMATCH/etc, reflecting FreeRDP's own unused-here
+// certificate cache) is deliberately ignored so there's exactly one place —
+// the JS known-hosts-store — that decides new vs. matching vs. changed,
+// mirroring SSH's verifyHostKey in ssh-session.ts. Return 1 to accept, 0 to
+// reject/abort the connection.
+DWORD NexusVerifyCertificateEx(freerdp* instance, const char* /*host*/, UINT16 /*port*/,
+                                const char* /*common_name*/, const char* /*subject*/,
+                                const char* /*issuer*/, const char* fingerprint, DWORD /*flags*/) {
+  auto* ctx = Ctx(instance->context);
+  if (ctx->onCertificateVerify && *ctx->onCertificateVerify) {
+    (*ctx->onCertificateVerify)(fingerprint ? fingerprint : "");
+  }
+  return ctx->backend->AwaitCertificateTrust() ? 1 : 0;
+}
+
+// FreeRDP calls this instead of NexusVerifyCertificateEx when ITS OWN
+// certificate cache (a separate mechanism from, and not used as the source
+// of truth by, our known-hosts-store-backed TOFU check below) already thinks
+// the certificate changed. Routes through the exact same
+// prompt-and-block path — old_fingerprint/old_subject/old_issuer are ignored
+// since known-hosts-store.ts already knows the previously trusted fingerprint
+// and does its own comparison. Leaving this unset (instance->VerifyChangedCertificateEx
+// stays null) would mean a genuinely changed certificate — the one case this
+// whole feature exists for — never reaches our callback at all.
+DWORD NexusVerifyChangedCertificateEx(freerdp* instance, const char* /*host*/, UINT16 /*port*/,
+                                       const char* /*common_name*/, const char* /*subject*/,
+                                       const char* /*issuer*/, const char* new_fingerprint,
+                                       const char* /*old_subject*/, const char* /*old_issuer*/,
+                                       const char* /*old_fingerprint*/, DWORD /*flags*/) {
+  auto* ctx = Ctx(instance->context);
+  if (ctx->onCertificateVerify && *ctx->onCertificateVerify) {
+    (*ctx->onCertificateVerify)(new_fingerprint ? new_fingerprint : "");
+  }
+  return ctx->backend->AwaitCertificateTrust() ? 1 : 0;
+}
+
 // Credentials are pre-populated via settings in RunLoop() before connect —
 // this just echoes them back if FreeRDP calls Authenticate anyway (e.g. the
 // server requests re-auth mid-negotiation).
@@ -162,13 +207,16 @@ namespace nexus {
 RdpBackend::RdpBackend() = default;
 RdpBackend::~RdpBackend() { Stop(); }
 
-void RdpBackend::Start(const RdpConnectOptions& options, FrameCallback onFrame, DisplayStatusCallback onStatus) {
-  thread_ = std::thread([this, options, onFrame = std::move(onFrame), onStatus = std::move(onStatus)]() mutable {
-    RunLoop(options, std::move(onFrame), std::move(onStatus));
+void RdpBackend::Start(const RdpConnectOptions& options, FrameCallback onFrame, DisplayStatusCallback onStatus,
+                        CertificateVerifyCallback onCertificateVerify) {
+  thread_ = std::thread([this, options, onFrame = std::move(onFrame), onStatus = std::move(onStatus),
+                          onCertificateVerify = std::move(onCertificateVerify)]() mutable {
+    RunLoop(options, std::move(onFrame), std::move(onStatus), std::move(onCertificateVerify));
   });
 }
 
-void RdpBackend::RunLoop(RdpConnectOptions options, FrameCallback onFrame, DisplayStatusCallback onStatus) {
+void RdpBackend::RunLoop(RdpConnectOptions options, FrameCallback onFrame, DisplayStatusCallback onStatus,
+                          CertificateVerifyCallback onCertificateVerify) {
   // Wires up the lookup table generated from every statically-linked channel
   // (see scripts/build-freerdp.sh — "disp"/"drdynvc" here) so
   // freerdp_client_load_channels can actually find them. Normally done for
@@ -185,6 +233,8 @@ void RdpBackend::RunLoop(RdpConnectOptions options, FrameCallback onFrame, Displ
   instance->PostConnect = NexusPostConnect;
   instance->PostDisconnect = NexusPostDisconnect;
   instance->Authenticate = NexusAuthenticate;
+  instance->VerifyCertificateEx = NexusVerifyCertificateEx;
+  instance->VerifyChangedCertificateEx = NexusVerifyChangedCertificateEx;
   // Drives loading the "disp" dynamic virtual channel (see NexusPreConnect's
   // FreeRDP_SupportDisplayControl=TRUE) — without this, FreeRDP never wires
   // up drdynvc/disp at all, and RequestResize's DispClientContext stays null
@@ -203,6 +253,8 @@ void RdpBackend::RunLoop(RdpConnectOptions options, FrameCallback onFrame, Displ
   auto* ctx = reinterpret_cast<NexusRdpContext*>(instance->context);
   ctx->onFrame = &onFrame;
   ctx->onStatus = &onStatus;
+  ctx->onCertificateVerify = &onCertificateVerify;
+  ctx->backend = this;
   PubSub_SubscribeChannelConnected(instance->context->pubSub, NexusChannelConnected);
   PubSub_SubscribeChannelDisconnected(instance->context->pubSub, NexusChannelDisconnected);
 
@@ -327,8 +379,32 @@ void RdpBackend::SendKeyEvent(uint32_t scancode, bool down) {
   freerdp_input_send_keyboard_event(instance->context->input, flags, static_cast<UINT8>(scancode));
 }
 
+bool RdpBackend::AwaitCertificateTrust() {
+  std::unique_lock<std::mutex> lock(certMutex_);
+  certDecisionPending_ = true;
+  certDecisionReady_ = false;
+  certCv_.wait(lock, [this] { return certDecisionReady_; });
+  certDecisionPending_ = false;
+  return certTrusted_;
+}
+
+void RdpBackend::ResolveCertificateTrust(bool trusted) {
+  std::lock_guard<std::mutex> lock(certMutex_);
+  if (!certDecisionPending_) return;  // nothing waiting — stale/duplicate call, ignore
+  certTrusted_ = trusted;
+  certDecisionReady_ = true;
+  certCv_.notify_one();
+}
+
 void RdpBackend::Stop() {
   stopRequested_.store(true);
+  // If RunLoop's thread is currently blocked inside AwaitCertificateTrust
+  // (waiting on a trust decision that will now never come — e.g. the user
+  // closed the Remote Desktop tab while the prompt was up), rejecting it here
+  // is what lets that thread unblock, fail the connect attempt, and exit —
+  // otherwise thread_.join() below would hang forever. A no-op if nothing is
+  // currently pending.
+  ResolveCertificateTrust(false);
   if (thread_.joinable()) thread_.join();
 }
 

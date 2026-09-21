@@ -9,7 +9,7 @@
  */
 import { BrowserWindow, ipcMain } from "electron";
 
-import { asRecord, reqNumber, reqString } from "./validate.js";
+import { asRecord, reqBool, reqNumber, reqString } from "./validate.js";
 import { sessionManager } from "../services/session-manager.js";
 import { logger } from "../logger.js";
 
@@ -43,6 +43,12 @@ export function registerDisplayHandlers(): void {
       window.webContents.send(IPC.display.status, { sessionId, state, message });
     });
 
+    // Forward certificate trust prompts the same way — see display:trustDecision below for the reply path.
+    session.onTrustPrompt((event) => {
+      if (window.isDestroyed()) return;
+      window.webContents.send(IPC.display.trustPrompt, { sessionId, ...event });
+    });
+
     try {
       session.connectNative(window, bounds);
     } catch (err) {
@@ -64,6 +70,14 @@ export function registerDisplayHandlers(): void {
     const obj = asRecord(payload, "display:disconnect");
     const sessionId = reqString(obj, "sessionId", "display:disconnect");
     await sessionManager.getDisplay(sessionId).close();
+    return { ok: true as const };
+  });
+
+  ipcMain.handle(IPC.display.trustDecision, async (_e, payload: unknown) => {
+    const obj = asRecord(payload, "display:trustDecision");
+    const sessionId = reqString(obj, "sessionId", "display:trustDecision");
+    const trusted = reqBool(obj, "trusted", "display:trustDecision");
+    await sessionManager.getDisplay(sessionId).resolveTrust(trusted);
     return { ok: true as const };
   });
 }

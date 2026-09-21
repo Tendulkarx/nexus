@@ -123,10 +123,16 @@ why `addon.mm` calls back into JS directly rather than using a
   over a slow link.
 - **Auth is password-only.** NLA/TLS credentials work; smart-card and Azure
   AD auth don't — out of scope for now.
-- **Server certificates are not verified** (`FreeRDP_IgnoreCertificate`) —
-  no MITM protection on the RDP leg, unlike the SSH host-key verification
-  Nexus already does elsewhere. See the comment in `NexusPreConnect`
-  (`rdp_backend.mm`) for the plan to wire up a TOFU flow here.
+- **Server certificates are verified via trust-on-first-use** (`instance->VerifyCertificateEx`,
+  see `NexusVerifyCertificateEx`/`RdpBackend::AwaitCertificateTrust` in
+  `rdp_backend.mm`), mirroring the SSH host-key verification Nexus already
+  does elsewhere (`main/services/known-hosts-store.ts`, now keyed by
+  `protocol:host:port` so SSH and RDP fingerprints share one store). The
+  connect handshake blocks (on the backend thread) until the renderer answers
+  a trust prompt (`display:trustPrompt`/`display:trustDecision`); a changed
+  fingerprint surfaces a visibly alarming variant of that prompt rather than
+  silently re-trusting. Not yet build-verified against a live server — see
+  the top of this file for this addon's current build status.
 
 ## Testing once it builds
 

@@ -75,6 +75,8 @@ import {
   type DisplayResizeRequest,
   type DisplayDisconnectRequest,
   type DisplayStatusEvent,
+  type DisplayTrustPromptEvent,
+  type DisplayTrustDecisionRequest,
   type PortForwardStartRequest,
   type PortForwardStopRequest,
   type PortForwardListRequest,
@@ -207,6 +209,9 @@ export const ipc = {
     resize: (req: DisplayResizeRequest) => invoke<OkResult>(IPC.display.resize, req),
     disconnect: (req: DisplayDisconnectRequest) => invoke<OkResult>(IPC.display.disconnect, req),
     onStatus: (handler: (payload: DisplayStatusEvent) => void) => on<DisplayStatusEvent>(IPC.display.status, handler),
+    trustDecision: (req: DisplayTrustDecisionRequest) => invoke<OkResult>(IPC.display.trustDecision, req),
+    onTrustPrompt: (handler: (payload: DisplayTrustPromptEvent) => void) =>
+      on<DisplayTrustPromptEvent>(IPC.display.trustPrompt, handler),
   },
 
   // Port forwards (local/remote — dynamic/SOCKS not implemented yet)

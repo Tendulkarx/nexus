@@ -29,12 +29,17 @@ class DisplaySession {
   ~DisplaySession();
 
   // Creates the child view, attaches it to the window at `bounds`, and
-  // starts the protocol backend. `onStatus` is invoked on the main thread.
+  // starts the protocol backend. `onStatus`/`onCertificateVerify` are
+  // invoked on the main thread.
   bool Connect(const std::string& protocol, const std::string& host, int port, const std::string& username,
                const std::string& secret, const DisplayBounds& bounds,
-               std::function<void(bool connected, const std::string& message)> onStatus);
+               std::function<void(bool connected, const std::string& message)> onStatus,
+               std::function<void(const std::string& fingerprint)> onCertificateVerify);
 
   void Resize(const DisplayBounds& bounds);
+
+  // Answers a pending certificate-trust prompt — see RdpBackend::ResolveCertificateTrust.
+  void ResolveCertificateTrust(bool trusted);
 
   // Tears down the backend + removes/releases the native view.
   void Disconnect();

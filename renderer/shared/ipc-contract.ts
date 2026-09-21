@@ -265,6 +265,11 @@ export interface DisplayBounds {
 // display:resize   { sessionId, bounds } → OkResult   (repositions/resizes the native child view — called on every ResizeObserver tick)
 // display:disconnect { sessionId }       → OkResult   (tears down the native view + session)
 // display:status↓ { sessionId, state, message? }  (backend→renderer: "connecting" | "connected" | "error" | "closed")
+// display:trustPrompt↓ { sessionId, fingerprint, changed, previousFingerprint }  (backend→renderer: the RDP server's
+//   TLS certificate needs a trust decision — first time seen, or changed since a previously trusted connection —
+//   and the native connect handshake is blocked waiting on display:trustDecision. See main/services/known-hosts-store.ts,
+//   the same trust-on-first-use model as SSH host keys.)
+// display:trustDecision { sessionId, trusted } → OkResult   (renderer→backend: the user's answer to display:trustPrompt)
 
 export interface DisplayConnectRequest {
   sessionId: string;
@@ -282,6 +287,17 @@ export interface DisplayStatusEvent {
   sessionId: string;
   state: DisplaySessionState;
   message?: string;
+}
+export interface DisplayTrustPromptEvent {
+  sessionId: string;
+  fingerprint: string;
+  /** True if a different fingerprint was previously trusted for this host:port — the MITM-warning case. */
+  changed: boolean;
+  previousFingerprint: string | null;
+}
+export interface DisplayTrustDecisionRequest {
+  sessionId: string;
+  trusted: boolean;
 }
 
 // ── Remote FS (invoke — all carry sessionId) ────────────────────────────────
@@ -872,6 +888,8 @@ export const IPC = {
     resize: "display:resize",
     disconnect: "display:disconnect",
     status: "display:status",
+    trustPrompt: "display:trustPrompt",
+    trustDecision: "display:trustDecision",
   },
   sshConfig: {
     list: "sshConfig:list",

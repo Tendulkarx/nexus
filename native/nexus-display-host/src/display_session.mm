@@ -137,7 +137,8 @@ DisplaySession::~DisplaySession() { Disconnect(); }
 
 bool DisplaySession::Connect(const std::string& protocol, const std::string& host, int port,
                              const std::string& username, const std::string& secret, const DisplayBounds& bounds,
-                             std::function<void(bool, const std::string&)> onStatus) {
+                             std::function<void(bool, const std::string&)> onStatus,
+                             std::function<void(const std::string&)> onCertificateVerify) {
   if (protocol != "rdp") {
     onStatus(false, "Unknown display protocol: " + protocol);
     return false;
@@ -179,6 +180,11 @@ bool DisplaySession::Connect(const std::string& protocol, const std::string& hos
       onStatus(connected, message);
     });
   };
+  auto onCertificateVerifyHop = [onCertificateVerify](const std::string& fingerprint) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+      onCertificateVerify(fingerprint);
+    });
+  };
 
   rdpBackend_ = std::make_unique<RdpBackend>();
   view_.backend = rdpBackend_.get();
@@ -187,9 +193,13 @@ bool DisplaySession::Connect(const std::string& protocol, const std::string& hos
   options.port = port;
   options.username = username;
   options.password = secret;
-  rdpBackend_->Start(options, onFrame, onStatusHop);
+  rdpBackend_->Start(options, onFrame, onStatusHop, onCertificateVerifyHop);
 
   return true;
+}
+
+void DisplaySession::ResolveCertificateTrust(bool trusted) {
+  if (rdpBackend_) rdpBackend_->ResolveCertificateTrust(trusted);
 }
 
 void DisplaySession::Resize(const DisplayBounds& bounds) {

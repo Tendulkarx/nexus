@@ -12,7 +12,9 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
+#include <mutex>
 #include <string>
 #include <thread>
 
@@ -39,7 +41,24 @@ class RdpBackend : public InputSink {
   RdpBackend(const RdpBackend&) = delete;
   RdpBackend& operator=(const RdpBackend&) = delete;
 
-  void Start(const RdpConnectOptions& options, FrameCallback onFrame, DisplayStatusCallback onStatus);
+  void Start(const RdpConnectOptions& options, FrameCallback onFrame, DisplayStatusCallback onStatus,
+             CertificateVerifyCallback onCertificateVerify);
+
+  // Called from NexusVerifyCertificateEx (RunLoop's own thread), after it has
+  // already invoked the CertificateVerifyCallback passed to Start(). Blocks
+  // this thread until ResolveCertificateTrust() supplies the decision, since
+  // FreeRDP needs a synchronous accept/reject return from VerifyCertificateEx
+  // and there's no way to suspend/resume its connect handshake instead.
+  // There's no timeout — exactly like a "trust this host key?" SSH prompt, an
+  // unanswered prompt should hold the connection open rather than silently
+  // accepting or failing it.
+  bool AwaitCertificateTrust();
+
+  // Called from the main/JS thread (via addon.mm) once the user has answered
+  // the prompt raised by AwaitCertificateTrust. A no-op if nothing is
+  // currently pending (e.g. a stale/duplicate call after the connection has
+  // already failed or been torn down).
+  void ResolveCertificateTrust(bool trusted);
 
   // FreeRDP supports live desktop resize via the "disp" (Display Control,
   // MS-RDPEDISP) dynamic virtual channel. Safe to call from any thread —
@@ -54,7 +73,8 @@ class RdpBackend : public InputSink {
   void Stop();
 
  private:
-  void RunLoop(RdpConnectOptions options, FrameCallback onFrame, DisplayStatusCallback onStatus);
+  void RunLoop(RdpConnectOptions options, FrameCallback onFrame, DisplayStatusCallback onStatus,
+               CertificateVerifyCallback onCertificateVerify);
 
   // Sends the latest pending resize (if any, and if enough time has passed
   // since the last one) via the "disp" channel. Only ever called from
@@ -72,6 +92,15 @@ class RdpBackend : public InputSink {
   std::atomic<int> pendingWidth_{0};
   std::atomic<int> pendingHeight_{0};
   std::chrono::steady_clock::time_point lastResizeSentAt_;
+
+  // Certificate-trust handoff between RunLoop's thread (blocked inside
+  // AwaitCertificateTrust) and the main/JS thread (ResolveCertificateTrust)
+  // — see both methods' comments above.
+  std::mutex certMutex_;
+  std::condition_variable certCv_;
+  bool certDecisionPending_ = false;
+  bool certDecisionReady_ = false;
+  bool certTrusted_ = false;
 };
 
 }  // namespace nexus
