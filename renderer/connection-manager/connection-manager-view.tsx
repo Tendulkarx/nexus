@@ -148,6 +148,16 @@ export function ConnectionManagerView() {
     queryFn: () => ipc.connections.list(),
   });
 
+  // Cross-device sync applies remote changes directly through connectionStore
+  // (connection-sync-service.ts), bypassing the connections:create/update/delete
+  // mutations above — so a pulled-in profile/folder needs its own invalidation
+  // trigger rather than piggybacking on a local mutation's onSuccess.
+  React.useEffect(() => {
+    return ipc.connectionSync.onStatusChanged(() => {
+      void qc.invalidateQueries({ queryKey: ["connections"] });
+    });
+  }, [qc]);
+
   const deleteConnectionMutation = useMutation({
     mutationFn: (id: string) => ipc.connections.delete({ id }),
     onSuccess: () => {

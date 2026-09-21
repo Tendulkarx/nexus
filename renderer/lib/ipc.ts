@@ -18,6 +18,8 @@ import {
   type ConnectionsExportResult,
   type ConnectionsImportRequest,
   type ConnectionsImportResult,
+  type ConnectionSyncStatus,
+  type ConnectionSyncConfigureRequest,
   type FoldersCreateRequest,
   type FoldersRenameRequest,
   type FoldersDeleteRequest,
@@ -116,6 +118,17 @@ export const ipc = {
       invoke<ConnectionsCheckReachabilityResult>(IPC.connections.checkReachability, req),
     export: (req: ConnectionsExportRequest) => invoke<ConnectionsExportResult>(IPC.connections.export, req),
     import: (req: ConnectionsImportRequest) => invoke<ConnectionsImportResult>(IPC.connections.import, req),
+  },
+
+  // Cross-device connection sync (folder-based — see connection-sync-service.ts)
+  connectionSync: {
+    getStatus: () => invoke<ConnectionSyncStatus>(IPC.connectionSync.getStatus),
+    configure: (req: ConnectionSyncConfigureRequest) =>
+      invoke<ConnectionSyncStatus>(IPC.connectionSync.configure, req),
+    disable: () => invoke<ConnectionSyncStatus>(IPC.connectionSync.disable),
+    syncNow: () => invoke<ConnectionSyncStatus>(IPC.connectionSync.syncNow),
+    onStatusChanged: (handler: (payload: ConnectionSyncStatus) => void) =>
+      on<ConnectionSyncStatus>(IPC.connectionSync.statusChanged, handler),
   },
 
   // Folders

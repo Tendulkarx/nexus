@@ -4,6 +4,7 @@
 
 import { registerActivityLogHandlers } from "./activity-log.js";
 import { appHandlers } from "./app.js";
+import { registerConnectionSyncHandlers } from "./connection-sync.js";
 import { registerConnectionHandlers } from "./connections.js";
 import { registerDisplayHandlers } from "./display.js";
 import { registerEditHandlers } from "./edit.js";
@@ -53,6 +54,7 @@ export function registerHandlers(): void {
 
   // Nexus feature handlers
   registerConnectionHandlers();
+  registerConnectionSyncHandlers();
   registerSessionHandlers();
   registerFilesystemHandlers();
   registerTransferHandlers();

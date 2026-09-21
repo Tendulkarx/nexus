@@ -56,6 +56,8 @@ export interface ConnectionProfile {
   color?: string | null;
   /** epoch ms of the last successful session:connect against this profile; null/undefined if never connected. */
   lastConnectedAt?: number | null;
+  /** epoch ms this profile was last created/edited. Optional so profiles saved before cross-device sync existed still parse; treated as 0 (oldest possible) when absent. Stamped by connection-store.ts on every create/update — see connection-sync-service.ts for how it drives last-write-wins conflict resolution. */
+  updatedAt?: number;
   /** safeStorage-encrypted base64 (password OR key passphrase). NEVER sent to renderer. */
   secret?: string | null;
   /** Only meaningful for sftp/ssh — SshSession tunnels the connection through this host when set. */
@@ -83,6 +85,8 @@ export interface Folder {
   id: string;
   name: string;
   parentId?: string | null;
+  /** epoch ms this folder was last created/renamed. Optional for the same reason as ConnectionProfile.updatedAt; see connection-sync-service.ts. */
+  updatedAt?: number;
 }
 
 /** A file/directory entry in either the local or remote pane. */
@@ -208,6 +212,54 @@ export interface ConnectionsImportRequest {
 export interface ConnectionsImportResult {
   profileCount: number;
   folderCount: number;
+}
+
+/**
+ * connectionSync:* — cross-device sync of saved connections via a
+ * user-chosen folder (iCloud Drive, Dropbox, or anywhere else already synced
+ * by some other means — Nexus only reads/writes a single file there and
+ * never talks to a sync backend itself). See
+ * main/services/connection-sync-service.ts for the full design.
+ *
+ * The whole snapshot is encrypted with a key derived (scrypt, via
+ * connection-export-crypto.ts — the same module connections:export/import
+ * already use) from a passphrase entered once per device. This is NOT the
+ * safeStorage key: safeStorage is bound to one machine's Keychain and a
+ * blob encrypted with it is undecryptable on any other machine, which is
+ * exactly why a portable, password-derived key is needed here instead.
+ *
+ * Conflicts — a profile edited or deleted on two devices before either had
+ * synced the other's change — are resolved last-write-wins by `updatedAt`
+ * and reported by name via `lastConflictNames` rather than silently
+ * dropped; see connection-sync-merge.ts for the resolution logic.
+ */
+export interface ConnectionSyncStatus {
+  enabled: boolean;
+  folderPath: string | null;
+  hasPassphrase: boolean;
+  syncing: boolean;
+  /** epoch ms of the last successful sync cycle (push+pull+merge), or null if it's never completed one. */
+  lastSyncedAt: number | null;
+  /** Profile/folder names resolved by last-write-wins in the most recent sync cycle; empty when nothing conflicted. */
+  lastConflictNames: string[];
+  /** Human-readable message from the most recent failed cycle (e.g. wrong passphrase, unreadable folder); null when the last attempt succeeded or none has run yet. */
+  lastError: string | null;
+}
+
+export interface ConnectionSyncConfigInput {
+  folderPath: string;
+  enabled: boolean;
+  /** Plaintext; omit to keep the passphrase already stored on this device (e.g. just re-enabling, or pointing at a different folder). Required the first time sync is enabled on a device. */
+  passphrase?: string;
+}
+
+// connectionSync:getStatus                  → ConnectionSyncStatus
+// connectionSync:configure { config }       → ConnectionSyncStatus
+// connectionSync:disable                    → ConnectionSyncStatus
+// connectionSync:syncNow                    → ConnectionSyncStatus
+// connectionSync:statusChanged (event↓)     → ConnectionSyncStatus
+export interface ConnectionSyncConfigureRequest {
+  config: ConnectionSyncConfigInput;
 }
 
 // ── Sessions (invoke) ──────────────────────────────────────────────────────
@@ -799,6 +851,13 @@ export const IPC = {
     checkReachability: "connections:checkReachability",
     export: "connections:export",
     import: "connections:import",
+  },
+  connectionSync: {
+    getStatus: "connectionSync:getStatus",
+    configure: "connectionSync:configure",
+    disable: "connectionSync:disable",
+    syncNow: "connectionSync:syncNow",
+    statusChanged: "connectionSync:statusChanged",
   },
   folders: {
     create: "folders:create",

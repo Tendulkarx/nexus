@@ -6,6 +6,7 @@ import { ipcMain } from "electron";
 
 import { asRecord, optString, reqBool, reqNumber, reqString } from "./validate.js";
 import { connectionStore } from "../services/connection-store.js";
+import { connectionSyncService } from "../services/connection-sync-service.js";
 import { checkReachable } from "../services/reachability.js";
 import { exportConnections, importConnections } from "../services/connection-transfer.js";
 
@@ -98,18 +99,23 @@ export function registerConnectionHandlers(): void {
 
   ipcMain.handle(IPC.connections.create, async (_e, payload: unknown) => {
     const obj = asRecord(payload, "connections:create");
-    return connectionStore.create(coerceInput(obj.input, "connections:create.input"));
+    const result = await connectionStore.create(coerceInput(obj.input, "connections:create.input"));
+    connectionSyncService.notifyLocalChange();
+    return result;
   });
 
   ipcMain.handle(IPC.connections.update, async (_e, payload: unknown) => {
     const obj = asRecord(payload, "connections:update");
     const id = reqString(obj, "id", "connections:update");
-    return connectionStore.update(id, coercePatch(obj.patch, "connections:update.patch"));
+    const result = await connectionStore.update(id, coercePatch(obj.patch, "connections:update.patch"));
+    connectionSyncService.notifyLocalChange();
+    return result;
   });
 
   ipcMain.handle(IPC.connections.delete, async (_e, payload: unknown) => {
     const obj = asRecord(payload, "connections:delete");
     await connectionStore.delete(reqString(obj, "id", "connections:delete"));
+    connectionSyncService.notifyLocalChange();
     return { ok: true as const };
   });
 
@@ -117,7 +123,9 @@ export function registerConnectionHandlers(): void {
     const obj = asRecord(payload, "connections:moveToFolder");
     const id = reqString(obj, "id", "connections:moveToFolder");
     const folderId = optString(obj, "folderId") ?? null;
-    return connectionStore.moveToFolder(id, folderId);
+    const result = await connectionStore.moveToFolder(id, folderId);
+    connectionSyncService.notifyLocalChange();
+    return result;
   });
 
   ipcMain.handle(IPC.connections.checkReachability, async (_e, payload: unknown) => {
@@ -141,25 +149,35 @@ export function registerConnectionHandlers(): void {
   ipcMain.handle(IPC.connections.import, async (_e, payload: unknown) => {
     const obj = asRecord(payload, "connections:import");
     const filePath = reqString(obj, "filePath", "connections:import");
-    return importConnections({ filePath, password: optString(obj, "password") });
+    const result = await importConnections({ filePath, password: optString(obj, "password") });
+    connectionSyncService.notifyLocalChange();
+    return result;
   });
 
   ipcMain.handle(IPC.folders.create, async (_e, payload: unknown) => {
     const obj = asRecord(payload, "folders:create");
-    return connectionStore.createFolder(reqString(obj, "name", "folders:create"), optString(obj, "parentId") ?? null);
+    const result = await connectionStore.createFolder(
+      reqString(obj, "name", "folders:create"),
+      optString(obj, "parentId") ?? null,
+    );
+    connectionSyncService.notifyLocalChange();
+    return result;
   });
 
   ipcMain.handle(IPC.folders.rename, async (_e, payload: unknown) => {
     const obj = asRecord(payload, "folders:rename");
-    return connectionStore.renameFolder(
+    const result = await connectionStore.renameFolder(
       reqString(obj, "id", "folders:rename"),
       reqString(obj, "name", "folders:rename"),
     );
+    connectionSyncService.notifyLocalChange();
+    return result;
   });
 
   ipcMain.handle(IPC.folders.delete, async (_e, payload: unknown) => {
     const obj = asRecord(payload, "folders:delete");
     await connectionStore.deleteFolder(reqString(obj, "id", "folders:delete"));
+    connectionSyncService.notifyLocalChange();
     return { ok: true as const };
   });
 }
