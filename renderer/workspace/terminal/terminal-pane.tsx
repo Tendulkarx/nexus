@@ -1,5 +1,6 @@
 import * as React from "react";
 import { Terminal } from "@xterm/xterm";
+import type { IDisposable } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { ipc } from "@renderer/lib/ipc";
@@ -7,6 +8,8 @@ import type { SessionInfo } from "@shared/ipc-contract";
 import { Text, Button } from "@renderer/lib/ui";
 import { TerminalIcon, RefreshCwIcon, ListIcon } from "lucide-react";
 import { SnippetLibraryDialog } from "./snippet-library-dialog";
+import { parseOsc7Cwd } from "./osc7";
+import { reportRemoteCwd } from "@renderer/lib/remote-cwd-store";
 
 interface TerminalPaneProps {
   session: SessionInfo;
@@ -20,6 +23,7 @@ export function TerminalPane({ session, isVisible }: TerminalPaneProps) {
   const terminalIdRef = React.useRef<string | null>(null);
   const offDataRef = React.useRef<(() => void) | null>(null);
   const offExitRef = React.useRef<(() => void) | null>(null);
+  const oscHandlerRef = React.useRef<IDisposable | null>(null);
   const [isClosed, setIsClosed] = React.useState(false);
   const [exitCode, setExitCode] = React.useState<number | null>(null);
   const [isInitializing, setIsInitializing] = React.useState(true);
@@ -34,6 +38,8 @@ export function TerminalPane({ session, isVisible }: TerminalPaneProps) {
       termRef.current.dispose();
       termRef.current = null;
     }
+    oscHandlerRef.current?.dispose();
+    oscHandlerRef.current = null;
 
     const term = new Terminal({
       fontFamily: "Menlo, Monaco, 'Courier New', monospace",
@@ -49,6 +55,15 @@ export function TerminalPane({ session, isVisible }: TerminalPaneProps) {
 
     termRef.current = term;
     fitAddonRef.current = fitAddon;
+
+    // OSC 7 (`ESC ]7;file://host/path ESC \`) is how shells report their cwd —
+    // main/services/shell-integration.ts injects a hook that emits it on every
+    // prompt for bash/zsh. Following it drives the remote file pane's cwd.
+    oscHandlerRef.current = term.parser.registerOscHandler(7, (data) => {
+      const path = parseOsc7Cwd(data);
+      if (path) reportRemoteCwd(session.sessionId, path);
+      return true;
+    });
 
     term.open(container);
     fitAddon.fit();
@@ -111,6 +126,8 @@ export function TerminalPane({ session, isVisible }: TerminalPaneProps) {
       }
       termRef.current?.dispose();
       termRef.current = null;
+      oscHandlerRef.current?.dispose();
+      oscHandlerRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- init once per mounted instance; the parent keys each tab by session id so session.sessionId never changes for a given instance
   }, []);
