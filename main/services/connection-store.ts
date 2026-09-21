@@ -91,6 +91,7 @@ export class ConnectionStore {
       defaultRemotePath: input.defaultRemotePath ?? null,
       color: input.color ?? null,
       lastConnectedAt: null,
+      updatedAt: Date.now(),
       secret: input.secret ? await credentialVault.encrypt(input.secret) : null,
       jumpHost: input.jumpHost ? await this.buildJumpHost(input.jumpHost) : null,
       agentForward: input.agentForward ?? false,
@@ -140,6 +141,7 @@ export class ConnectionStore {
       }
     }
 
+    profile.updatedAt = Date.now();
     await this.store.save(data);
     return toDTO(profile);
   }
@@ -147,6 +149,48 @@ export class ConnectionStore {
   async delete(id: string): Promise<void> {
     const data = await this.data();
     data.profiles = data.profiles.filter((p) => p.id !== id);
+    await this.store.save(data);
+  }
+
+  /** Backend-only: full profiles/folders including encrypted secrets, for connection-sync-service to build its local view. */
+  async listRaw(): Promise<{ profiles: ConnectionProfile[]; folders: Folder[] }> {
+    const data = await this.data();
+    return { profiles: data.profiles, folders: data.folders };
+  }
+
+  /**
+   * Backend-only: applies a batch of already-fully-formed records from
+   * connection-sync-service in one save — used instead of create()/update()
+   * because sync already has real ids/updatedAt/secrets (vault-encrypted for
+   * THIS machine) resolved by the merge, and must not have them regenerated.
+   */
+  async applySync(changes: {
+    upsertProfiles: ConnectionProfile[];
+    deleteProfileIds: string[];
+    upsertFolders: Folder[];
+  }): Promise<void> {
+    if (
+      changes.upsertProfiles.length === 0 &&
+      changes.deleteProfileIds.length === 0 &&
+      changes.upsertFolders.length === 0
+    ) {
+      return;
+    }
+    const data = await this.data();
+    if (changes.deleteProfileIds.length > 0) {
+      const deleteIds = new Set(changes.deleteProfileIds);
+      data.profiles = data.profiles.filter((p) => !deleteIds.has(p.id));
+    }
+    for (const profile of changes.upsertProfiles) {
+      const idx = data.profiles.findIndex((p) => p.id === profile.id);
+      if (idx === -1) data.profiles.push(profile);
+      else data.profiles[idx] = profile;
+    }
+    for (const folder of changes.upsertFolders) {
+      const idx = data.folders.findIndex((f) => f.id === folder.id);
+      if (idx === -1) data.folders.push(folder);
+      else data.folders[idx] = folder;
+    }
     await this.store.save(data);
   }
 
@@ -165,7 +209,7 @@ export class ConnectionStore {
 
   async createFolder(name: string, parentId: string | null = null): Promise<Folder> {
     const data = await this.data();
-    const folder: Folder = { id: randomUUID(), name, parentId };
+    const folder: Folder = { id: randomUUID(), name, parentId, updatedAt: Date.now() };
     data.folders.push(folder);
     await this.store.save(data);
     return folder;
@@ -176,6 +220,7 @@ export class ConnectionStore {
     const folder = data.folders.find((f) => f.id === id);
     if (!folder) throw new Error(`Folder not found: ${id}`);
     folder.name = name;
+    folder.updatedAt = Date.now();
     await this.store.save(data);
     return folder;
   }

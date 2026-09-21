@@ -16,6 +16,7 @@ const { autoUpdater } = electronUpdaterPkg;
 import { registerHandlers } from "./handlers/index.js";
 import { getPreloadPath, getWindowUrl } from "./windows/window-paths.js";
 import { openSettingsWindow } from "./windows/settings-window.js";
+import { connectionSyncService } from "./services/connection-sync-service.js";
 import { editManager } from "./services/edit-manager.js";
 import { prepareDragDownload } from "./services/drag-download.js";
 import { portForwardManager } from "./services/port-forward-manager.js";
@@ -280,6 +281,7 @@ app.whenReady().then(async () => {
   }
   checkForUpdates();
   setInterval(updateDockTransferProgress, DOCK_UPDATE_INTERVAL_MS);
+  void connectionSyncService.init();
 });
 
 function registerDragDownloadProtocol(): void {

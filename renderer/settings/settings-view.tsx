@@ -18,18 +18,19 @@ import {
   FieldLabel,
   toast,
 } from "@renderer/lib/ui";
-import { PaletteIcon, BellIcon, SparklesIcon } from "lucide-react";
+import { PaletteIcon, BellIcon, SparklesIcon, RefreshCwIcon } from "lucide-react";
 import type { NativeThemeInfo } from "@renderer/lib/native-theme";
-import type { AiSuggestConfig } from "@shared/ipc-contract";
+import type { AiSuggestConfig, ConnectionSyncStatus } from "@shared/ipc-contract";
 import { ipc } from "@renderer/lib/ipc";
 import { useTheme } from "@renderer/lib/hooks";
 
-type SettingsCategory = "appearance" | "notifications" | "aiSuggestions";
+type SettingsCategory = "appearance" | "notifications" | "aiSuggestions" | "sync";
 
 const CATEGORIES: { id: SettingsCategory; title: string; icon: React.ReactNode }[] = [
   { id: "appearance", title: "Appearance", icon: <PaletteIcon className="size-4" /> },
   { id: "notifications", title: "Notifications", icon: <BellIcon className="size-4" /> },
   { id: "aiSuggestions", title: "AI Suggestions", icon: <SparklesIcon className="size-4" /> },
+  { id: "sync", title: "Sync", icon: <RefreshCwIcon className="size-4" /> },
 ];
 
 function AppearanceSettings() {
@@ -225,6 +226,167 @@ function AiSuggestSettings() {
   );
 }
 
+function formatLastSynced(lastSyncedAt: number | null): string {
+  if (lastSyncedAt === null) return "Never synced";
+  const seconds = Math.round((Date.now() - lastSyncedAt) / 1000);
+  if (seconds < 5) return "Synced just now";
+  if (seconds < 60) return `Synced ${seconds}s ago`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `Synced ${minutes}m ago`;
+  return `Synced at ${new Date(lastSyncedAt).toLocaleString()}`;
+}
+
+function ConnectionSyncSettings() {
+  const [status, setStatus] = useState<ConnectionSyncStatus | null>(null);
+  const [folderPath, setFolderPath] = useState("");
+  const [passphrase, setPassphrase] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    ipc.connectionSync
+      .getStatus()
+      .then((s) => {
+        setStatus(s);
+        setFolderPath(s.folderPath ?? "");
+      })
+      .catch((error) => toast.error(`Failed to load sync settings: ${error}`));
+
+    return ipc.connectionSync.onStatusChanged((s) => {
+      setStatus(s);
+      setFolderPath((current) => (current ? current : (s.folderPath ?? "")));
+    });
+  }, []);
+
+  async function pickFolder() {
+    const result = await window.nexusAPI.dialog.showOpenDialog({
+      title: "Choose a Synced Folder",
+      properties: ["openDirectory", "createDirectory"],
+    });
+    const path = result.filePaths[0];
+    if (result.canceled || !path) return;
+    setFolderPath(path);
+  }
+
+  async function enable() {
+    if (!folderPath) {
+      toast.error("Choose a folder first");
+      return;
+    }
+    if (!status?.hasPassphrase && !passphrase) {
+      toast.error("Enter a sync passphrase");
+      return;
+    }
+    setSaving(true);
+    try {
+      const next = await ipc.connectionSync.configure({
+        config: { folderPath, enabled: true, passphrase: passphrase || undefined },
+      });
+      setStatus(next);
+      setPassphrase("");
+      toast.success("Sync enabled");
+    } catch (error) {
+      toast.error(`Failed to enable sync: ${error}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function disable() {
+    setSaving(true);
+    try {
+      setStatus(await ipc.connectionSync.disable());
+      toast.success("Sync disabled");
+    } catch (error) {
+      toast.error(`Failed to disable sync: ${error}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function syncNow() {
+    setSaving(true);
+    try {
+      setStatus(await ipc.connectionSync.syncNow());
+    } catch (error) {
+      toast.error(`Sync failed: ${error}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <FieldGroup>
+      <Field orientation="horizontal">
+        <FieldContent>
+          <FieldLabel htmlFor="sync-folder">Synced folder</FieldLabel>
+          <Text variant="small" color="tertiary">
+            Pick a folder that&apos;s already kept in sync by something else — iCloud Drive, Dropbox, or similar.
+            Nexus only reads and writes one encrypted file inside it; it never talks to a sync service directly.
+          </Text>
+        </FieldContent>
+        <div className="flex items-center gap-2">
+          <Input id="sync-folder" value={folderPath} readOnly placeholder="No folder chosen" className="min-w-64" />
+          <Button variant="filled" onClick={() => void pickFolder()} disabled={status?.enabled}>
+            Choose…
+          </Button>
+        </div>
+      </Field>
+      <Field orientation="horizontal">
+        <FieldContent>
+          <FieldLabel htmlFor="sync-passphrase">Sync passphrase</FieldLabel>
+          <Text variant="small" color="tertiary">
+            {status?.hasPassphrase
+              ? "A passphrase is stored securely on this device. Enter the same one on every device you sync."
+              : "Choose a passphrase — you'll enter the same one on every other device you sync. Never leaves this device except as an encryption key; it's not sent anywhere or stored in the synced file."}
+          </Text>
+        </FieldContent>
+        <Input
+          id="sync-passphrase"
+          type="password"
+          placeholder={status?.hasPassphrase ? "Enter to change it" : "Choose a passphrase"}
+          value={passphrase}
+          onChange={(e) => setPassphrase(e.target.value)}
+        />
+      </Field>
+      <Field orientation="horizontal">
+        <FieldContent>
+          <FieldLabel>Status</FieldLabel>
+          <Text variant="small" color="tertiary">
+            {status?.enabled ? formatLastSynced(status.lastSyncedAt) : "Sync is off"}
+            {status?.syncing ? " · Syncing…" : ""}
+          </Text>
+          {status?.lastError && (
+            <Text variant="small" className="text-red-600 dark:text-red-400">
+              {status.lastError}
+            </Text>
+          )}
+          {status && status.lastConflictNames.length > 0 && (
+            <Text variant="small" color="tertiary">
+              Kept the most recent edit for: {status.lastConflictNames.join(", ")}
+            </Text>
+          )}
+        </FieldContent>
+        <div className="flex items-center gap-2">
+          {status?.enabled && (
+            <Button variant="filled" disabled={saving || status.syncing} onClick={() => void syncNow()}>
+              Sync Now
+            </Button>
+          )}
+          {status?.enabled ? (
+            <Button variant="filled" disabled={saving} onClick={() => void disable()}>
+              Disable
+            </Button>
+          ) : (
+            <Button variant="accent" disabled={saving} onClick={() => void enable()}>
+              {saving ? "Enabling…" : "Enable"}
+            </Button>
+          )}
+        </div>
+      </Field>
+    </FieldGroup>
+  );
+}
+
 export function SettingsView() {
   useTheme();
 
@@ -294,6 +456,7 @@ export function SettingsView() {
           {category === "appearance" && <AppearanceSettings />}
           {category === "notifications" && <NotificationSettings />}
           {category === "aiSuggestions" && <AiSuggestSettings />}
+          {category === "sync" && <ConnectionSyncSettings />}
         </div>
       </ScrollArea>
     </SplitView>
