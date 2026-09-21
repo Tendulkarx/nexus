@@ -9,10 +9,11 @@ import {
   Button,
   toast,
 } from "@renderer/lib/ui";
-import { ArrowUpIcon, ArrowDownIcon, Trash2Icon, AlertTriangleIcon, Loader2Icon } from "lucide-react";
+import { ArrowUpIcon, ArrowDownIcon, Trash2Icon, AlertTriangleIcon, Loader2Icon, GitCompareIcon } from "lucide-react";
 import { ipc } from "@renderer/lib/ipc";
 import type { SyncActionType, SyncMode, SyncPlanEntry } from "@shared/ipc-contract";
 import { cn } from "@renderer/lib/cn";
+import { SyncDiffDialog } from "./sync-diff-dialog";
 
 interface SyncDialogProps {
   open: boolean;
@@ -48,12 +49,14 @@ export function SyncDialog({ open, onOpenChange, sessionId, localRoot, remoteRoo
   const [isPreviewing, setIsPreviewing] = React.useState(false);
   const [isExecuting, setIsExecuting] = React.useState(false);
   const [progress, setProgress] = React.useState<{ completed: number; total: number } | null>(null);
+  const [diffEntry, setDiffEntry] = React.useState<SyncPlanEntry | null>(null);
 
   React.useEffect(() => {
     if (!open) {
       setEntries(null);
       setPreviewedKey(null);
       setProgress(null);
+      setDiffEntry(null);
     }
   }, [open]);
 
@@ -107,6 +110,7 @@ export function SyncDialog({ open, onOpenChange, sessionId, localRoot, remoteRoo
   const confirmDisabled = !entries || isStale || isExecuting || actionableCount === 0;
 
   return (
+    <>
     <Dialog
       open={open}
       onOpenChange={(next) => {
@@ -199,6 +203,18 @@ export function SyncDialog({ open, onOpenChange, sessionId, localRoot, remoteRoo
                   <Text variant="small" className={cn("shrink-0 w-24", meta.color)}>{meta.label}</Text>
                   <Text variant="small" truncate className="flex-1 min-w-0 font-mono">{entry.relPath}</Text>
                   <Text variant="small" color="tertiary" className="shrink-0">{entry.detail}</Text>
+                  {entry.canDiff && (
+                    <Button
+                      variant="transparent"
+                      size="small"
+                      iconOnly
+                      aria-label={`View diff for ${entry.relPath}`}
+                      className="shrink-0"
+                      onClick={() => setDiffEntry(entry)}
+                    >
+                      <GitCompareIcon className="size-3.5" />
+                    </Button>
+                  )}
                 </div>
               );
             })
@@ -215,5 +231,16 @@ export function SyncDialog({ open, onOpenChange, sessionId, localRoot, remoteRoo
         )}
       </div>
     </Dialog>
+
+    {diffEntry && (
+      <SyncDiffDialog
+        sessionId={sessionId}
+        localRoot={localRoot}
+        remoteRoot={remoteRoot}
+        entry={diffEntry}
+        onClose={() => setDiffEntry(null)}
+      />
+    )}
+    </>
   );
 }

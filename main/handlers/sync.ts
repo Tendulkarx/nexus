@@ -46,4 +46,14 @@ export function registerSyncHandlers(): void {
       entries: reqPlanEntries(obj, "sync:execute"),
     });
   });
+
+  ipcMain.handle(IPC.sync.diff, async (_e, payload: unknown) => {
+    const obj = asRecord(payload, "sync:diff");
+    return syncManager.diffEntry({
+      sessionId: reqString(obj, "sessionId", "sync:diff"),
+      localRoot: reqString(obj, "localRoot", "sync:diff"),
+      remoteRoot: reqString(obj, "remoteRoot", "sync:diff"),
+      relPath: reqString(obj, "relPath", "sync:diff"),
+    });
+  });
 }

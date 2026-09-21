@@ -15,11 +15,14 @@ import { emitToRenderer } from "./ipc-emitter.js";
 import { localFsService } from "./local-fs.js";
 import { notify } from "./notification-service.js";
 import { sessionManager } from "./session-manager.js";
+import { looksLikeTextByName, PREVIEW_MAX_BYTES, toTextPreview } from "./text-utils.js";
 import { transferManager } from "./transfer-manager.js";
 import type { BaseSession } from "./sessions/base-session.js";
 
 import { IPC } from "../../renderer/shared/ipc-contract.js";
 import type {
+  SyncDiffRequest,
+  SyncDiffResult,
   SyncExecuteRequest,
   SyncExecuteResult,
   SyncMode,
@@ -51,6 +54,17 @@ function filesSame(a: SyncFileEntry, b: SyncFileEntry): boolean {
 }
 
 /**
+ * Whether a plan entry with a copy on both sides is eligible for the
+ * "view diff" option: text-like by name and under the same size cap the
+ * quick editor uses (main/services/text-utils.ts). The other side's exact
+ * size isn't known at plan time, so this is a pre-fetch heuristic — diffEntry()
+ * still caps each read and reports truncated/isBinary from the real bytes.
+ */
+export function isDiffEligible(relPath: string, size: number): boolean {
+  return size <= PREVIEW_MAX_BYTES && looksLikeTextByName(relPath);
+}
+
+/**
  * Pure diff-then-plan step: given a flat file listing for each side, decides
  * what to do with every path. No filesystem/network access, which makes it
  * easy to unit test with fabricated entries — see sync-manager.test.ts.
@@ -70,12 +84,13 @@ export function computeSyncPlan(
     const remote = remoteByPath.get(relPath);
 
     if (local && !remote) {
+      // Nothing on the other side to diff against.
       if (options.mode === "download") {
         if (options.deleteOrphans) {
-          plan.push({ relPath, action: "delete-local", size: local.size, detail: "only on local" });
+          plan.push({ relPath, action: "delete-local", size: local.size, detail: "only on local", canDiff: false });
         }
       } else {
-        plan.push({ relPath, action: "upload", size: local.size, detail: "only on local" });
+        plan.push({ relPath, action: "upload", size: local.size, detail: "only on local", canDiff: false });
       }
       continue;
     }
@@ -83,10 +98,10 @@ export function computeSyncPlan(
     if (!local && remote) {
       if (options.mode === "upload") {
         if (options.deleteOrphans) {
-          plan.push({ relPath, action: "delete-remote", size: remote.size, detail: "only on remote" });
+          plan.push({ relPath, action: "delete-remote", size: remote.size, detail: "only on remote", canDiff: false });
         }
       } else {
-        plan.push({ relPath, action: "download", size: remote.size, detail: "only on remote" });
+        plan.push({ relPath, action: "download", size: remote.size, detail: "only on remote", canDiff: false });
       }
       continue;
     }
@@ -96,14 +111,26 @@ export function computeSyncPlan(
 
       if (options.mode === "upload") {
         if (local.mtime > remote.mtime + MTIME_TOLERANCE_MS) {
-          plan.push({ relPath, action: "upload", size: local.size, detail: "local is newer" });
+          plan.push({
+            relPath,
+            action: "upload",
+            size: local.size,
+            detail: "local is newer",
+            canDiff: isDiffEligible(relPath, local.size),
+          });
         }
         continue;
       }
 
       if (options.mode === "download") {
         if (remote.mtime > local.mtime + MTIME_TOLERANCE_MS) {
-          plan.push({ relPath, action: "download", size: remote.size, detail: "remote is newer" });
+          plan.push({
+            relPath,
+            action: "download",
+            size: remote.size,
+            detail: "remote is newer",
+            canDiff: isDiffEligible(relPath, remote.size),
+          });
         }
         continue;
       }
@@ -112,7 +139,13 @@ export function computeSyncPlan(
       // way to tell whether only one side changed or both did, so any
       // both-sides-differ case is surfaced as a conflict for the user to
       // resolve by hand rather than guessing a winner and risking data loss.
-      plan.push({ relPath, action: "conflict", size: local.size, detail: "changed on both sides" });
+      plan.push({
+        relPath,
+        action: "conflict",
+        size: local.size,
+        detail: "changed on both sides",
+        canDiff: isDiffEligible(relPath, local.size),
+      });
     }
   }
 
@@ -131,6 +164,18 @@ export class SyncManager {
       deleteOrphans: request.deleteOrphans,
     });
     return { entries };
+  }
+
+  /** Fetches both sides' full text for one plan entry, on demand, for the plan-preview's "view diff" option. */
+  async diffEntry(request: SyncDiffRequest): Promise<SyncDiffResult> {
+    const session = sessionManager.get(request.sessionId);
+    const localPath = path.join(request.localRoot, request.relPath);
+    const remotePath = path.join(request.remoteRoot, request.relPath);
+    const [localBuffer, remoteBuffer] = await Promise.all([
+      localFsService.readFile(localPath, PREVIEW_MAX_BYTES),
+      session.readFile(remotePath, PREVIEW_MAX_BYTES),
+    ]);
+    return { local: toTextPreview(localBuffer), remote: toTextPreview(remoteBuffer) };
   }
 
   async execute(request: SyncExecuteRequest): Promise<SyncExecuteResult> {

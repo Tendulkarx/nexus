@@ -10,7 +10,7 @@ vi.mock("./transfer-manager.js", () => ({ transferManager: { startTracked: vi.fn
 vi.mock("./activity-log.js", () => ({ activityLog: { record: vi.fn().mockResolvedValue(undefined) } }));
 vi.mock("./notification-service.js", () => ({ notify: vi.fn() }));
 
-import { computeSyncPlan, type SyncFileEntry } from "./sync-manager.js";
+import { computeSyncPlan, isDiffEligible, type SyncFileEntry } from "./sync-manager.js";
 
 function file(relPath: string, size: number, mtime: number): SyncFileEntry {
   return { relPath, size, mtime };
@@ -19,12 +19,14 @@ function file(relPath: string, size: number, mtime: number): SyncFileEntry {
 describe("computeSyncPlan", () => {
   it("uploads a file that only exists locally, in upload mode", () => {
     const plan = computeSyncPlan([file("a.txt", 10, 1000)], [], { mode: "upload", deleteOrphans: false });
-    expect(plan).toEqual([{ relPath: "a.txt", action: "upload", size: 10, detail: "only on local" }]);
+    expect(plan).toEqual([{ relPath: "a.txt", action: "upload", size: 10, detail: "only on local", canDiff: false }]);
   });
 
   it("downloads a file that only exists remotely, in download mode", () => {
     const plan = computeSyncPlan([], [file("a.txt", 10, 1000)], { mode: "download", deleteOrphans: false });
-    expect(plan).toEqual([{ relPath: "a.txt", action: "download", size: 10, detail: "only on remote" }]);
+    expect(plan).toEqual([
+      { relPath: "a.txt", action: "download", size: 10, detail: "only on remote", canDiff: false },
+    ]);
   });
 
   it("produces no action for a file present and identical on both sides", () => {
@@ -51,7 +53,9 @@ describe("computeSyncPlan", () => {
       [file("a.txt", 10, 1000)],
       { mode: "upload", deleteOrphans: false },
     );
-    expect(plan).toEqual([{ relPath: "a.txt", action: "upload", size: 20, detail: "local is newer" }]);
+    expect(plan).toEqual([
+      { relPath: "a.txt", action: "upload", size: 20, detail: "local is newer", canDiff: true },
+    ]);
   });
 
   it("does not touch remote when remote is newer, in upload mode (never rolls remote back)", () => {
@@ -69,7 +73,9 @@ describe("computeSyncPlan", () => {
       [file("a.txt", 20, 5000)],
       { mode: "download", deleteOrphans: false },
     );
-    expect(plan).toEqual([{ relPath: "a.txt", action: "download", size: 20, detail: "remote is newer" }]);
+    expect(plan).toEqual([
+      { relPath: "a.txt", action: "download", size: 20, detail: "remote is newer", canDiff: true },
+    ]);
   });
 
   it("does not touch local when local is newer, in download mode (never rolls local back)", () => {
@@ -101,7 +107,7 @@ describe("computeSyncPlan", () => {
       deleteOrphans: true,
     });
     expect(plan).toEqual([
-      { relPath: "remote-only.txt", action: "delete-remote", size: 10, detail: "only on remote" },
+      { relPath: "remote-only.txt", action: "delete-remote", size: 10, detail: "only on remote", canDiff: false },
     ]);
   });
 
@@ -111,7 +117,7 @@ describe("computeSyncPlan", () => {
       deleteOrphans: true,
     });
     expect(plan).toEqual([
-      { relPath: "local-only.txt", action: "delete-local", size: 10, detail: "only on local" },
+      { relPath: "local-only.txt", action: "delete-local", size: 10, detail: "only on local", canDiff: false },
     ]);
   });
 
@@ -122,8 +128,8 @@ describe("computeSyncPlan", () => {
       { mode: "two-way", deleteOrphans: false },
     );
     expect(plan).toEqual([
-      { relPath: "local-only.txt", action: "upload", size: 10, detail: "only on local" },
-      { relPath: "remote-only.txt", action: "download", size: 20, detail: "only on remote" },
+      { relPath: "local-only.txt", action: "upload", size: 10, detail: "only on local", canDiff: false },
+      { relPath: "remote-only.txt", action: "download", size: 20, detail: "only on remote", canDiff: false },
     ]);
   });
 
@@ -134,7 +140,7 @@ describe("computeSyncPlan", () => {
       { mode: "two-way", deleteOrphans: false },
     );
     expect(localNewer).toEqual([
-      { relPath: "a.txt", action: "conflict", size: 20, detail: "changed on both sides" },
+      { relPath: "a.txt", action: "conflict", size: 20, detail: "changed on both sides", canDiff: true },
     ]);
 
     const remoteNewer = computeSyncPlan(
@@ -143,7 +149,7 @@ describe("computeSyncPlan", () => {
       { mode: "two-way", deleteOrphans: false },
     );
     expect(remoteNewer).toEqual([
-      { relPath: "a.txt", action: "conflict", size: 10, detail: "changed on both sides" },
+      { relPath: "a.txt", action: "conflict", size: 10, detail: "changed on both sides", canDiff: true },
     ]);
   });
 
@@ -163,5 +169,43 @@ describe("computeSyncPlan", () => {
       { mode: "upload", deleteOrphans: false },
     );
     expect(plan.map((e) => e.relPath)).toEqual(["a.txt", "z.txt"]);
+  });
+
+  it("marks a both-sides-differ binary-looking file as not diffable, regardless of size", () => {
+    const plan = computeSyncPlan(
+      [file("photo.png", 10, 5000)],
+      [file("photo.png", 20, 1000)],
+      { mode: "two-way", deleteOrphans: false },
+    );
+    expect(plan).toEqual([
+      { relPath: "photo.png", action: "conflict", size: 10, detail: "changed on both sides", canDiff: false },
+    ]);
+  });
+
+  it("marks a both-sides-differ oversized text file as not diffable", () => {
+    const oversized = 256 * 1024 + 1;
+    const plan = computeSyncPlan(
+      [file("a.txt", oversized, 5000)],
+      [file("a.txt", 10, 1000)],
+      { mode: "upload", deleteOrphans: false },
+    );
+    expect(plan).toEqual([
+      { relPath: "a.txt", action: "upload", size: oversized, detail: "local is newer", canDiff: false },
+    ]);
+  });
+});
+
+describe("isDiffEligible", () => {
+  it("accepts a text file at or under the 256 KB cap", () => {
+    expect(isDiffEligible("notes.txt", 256 * 1024)).toBe(true);
+    expect(isDiffEligible("src/index.ts", 100)).toBe(true);
+  });
+
+  it("rejects a text file over the 256 KB cap", () => {
+    expect(isDiffEligible("notes.txt", 256 * 1024 + 1)).toBe(false);
+  });
+
+  it("rejects a file that doesn't look like text by name, regardless of size", () => {
+    expect(isDiffEligible("photo.png", 10)).toBe(false);
   });
 });

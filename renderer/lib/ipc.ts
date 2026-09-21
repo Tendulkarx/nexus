@@ -71,6 +71,8 @@ import {
   type SyncExecuteRequest,
   type SyncExecuteResult,
   type SyncProgressEvent,
+  type SyncDiffRequest,
+  type SyncDiffResult,
   type TerminalDataEvent,
   type TerminalExitEvent,
   type DisplayConnectRequest,
@@ -203,6 +205,7 @@ export const ipc = {
   sync: {
     plan: (req: SyncPlanRequest) => invoke<SyncPlanResult>(IPC.sync.plan, req),
     execute: (req: SyncExecuteRequest) => invoke<SyncExecuteResult>(IPC.sync.execute, req),
+    diff: (req: SyncDiffRequest) => invoke<SyncDiffResult>(IPC.sync.diff, req),
     onProgress: (handler: (payload: SyncProgressEvent) => void) => on<SyncProgressEvent>(IPC.sync.progress, handler),
   },
 

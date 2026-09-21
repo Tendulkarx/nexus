@@ -579,7 +579,9 @@ export interface TransferErrorEvent {
 //
 // A sync always runs between one local directory and one remote directory on
 // an open session. sync:plan computes what WOULD happen (no filesystem/network
-// mutation); sync:execute runs a plan the user has already seen and confirmed.
+// mutation); sync:execute runs a plan the user has already seen and confirmed;
+// sync:diff fetches both sides' full text for one entry on demand, for the
+// plan-preview's "view diff" option.
 // Upload/download actions execute through the same TransferManager used by
 // manual transfers (see transfer:queued above); deletions are immediate,
 // one-shot operations with no meaningful progress of their own.
@@ -602,10 +604,18 @@ export interface SyncPlanEntry {
   size: number;
   /** short human-readable reason, e.g. "only on local", "remote is newer" */
   detail: string;
+  /**
+   * Whether sync:diff can show a line-level diff for this entry: only true
+   * when a copy exists on both sides (excludes "only on local/remote" and
+   * delete entries) and the file looks like text and is under the same size
+   * cap as the quick editor — see isDiffEligible in sync-manager.ts.
+   */
+  canDiff: boolean;
 }
 
-// sync:plan    { sessionId, localRoot, remoteRoot, mode, deleteOrphans } → SyncPlanResult
-// sync:execute { sessionId, localRoot, remoteRoot, entries }             → SyncExecuteResult
+// sync:plan    { sessionId, localRoot, remoteRoot, mode, deleteOrphans }        → SyncPlanResult
+// sync:execute { sessionId, localRoot, remoteRoot, entries }                    → SyncExecuteResult
+// sync:diff    { sessionId, localRoot, remoteRoot, relPath }                    → SyncDiffResult
 export interface SyncPlanRequest {
   sessionId: string;
   localRoot: string;
@@ -636,6 +646,17 @@ export interface SyncProgressEvent {
   completed: number;
   total: number;
   relPath: string;
+}
+
+export interface SyncDiffRequest {
+  sessionId: string;
+  localRoot: string;
+  remoteRoot: string;
+  relPath: string;
+}
+export interface SyncDiffResult {
+  local: ReadFileResult;
+  remote: ReadFileResult;
 }
 // ── Activity log (invoke) ───────────────────────────────────────────────────
 //
@@ -927,6 +948,7 @@ export const IPC = {
     plan: "sync:plan",
     execute: "sync:execute",
     progress: "sync:progress",
+    diff: "sync:diff",
   },
   terminal: {
     open: "terminal:open",
