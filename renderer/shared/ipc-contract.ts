@@ -11,8 +11,13 @@
 
 // ── Domain models ────────────────────────────────────────────────────────
 
-/** sftp/ftp/ftps/ssh are file-transfer protocols (browse + optional terminal); rdp is a display protocol (renders a remote desktop, no file browsing — see SessionInfo.kind). */
-export type Protocol = "sftp" | "ftp" | "ftps" | "ssh" | "rdp";
+/**
+ * sftp/ftp/ftps/ssh are file-transfer protocols (browse + optional terminal);
+ * rdp is a display protocol (renders a remote desktop, no file browsing);
+ * mosh is a terminal-only protocol (roaming-resilient shell over UDP, no
+ * file browsing either) — see SessionInfo.kind.
+ */
+export type Protocol = "sftp" | "ftp" | "ftps" | "ssh" | "rdp" | "mosh";
 export type AuthType = "password" | "key";
 
 /**
@@ -282,12 +287,16 @@ export interface SessionInfo {
   protocol: Protocol;
   host: string;
   username: string;
-  /** Empty string for display (rdp) sessions — they have no filesystem. */
+  /** Empty string for display (rdp) and terminal (mosh) sessions — neither has a filesystem. */
   homeDir: string;
-  /** true when this protocol supports an interactive shell (sftp/ssh). */
+  /** true when this protocol supports an interactive shell (sftp/ssh/mosh). */
   supportsTerminal: boolean;
-  /** "file" (sftp/ftp/ftps/ssh — browse + optional terminal) or "display" (rdp — embedded remote-desktop tab, no file/terminal tabs). */
-  kind: "file" | "display";
+  /**
+   * "file" (sftp/ftp/ftps/ssh — browse + optional terminal), "display" (rdp —
+   * embedded remote-desktop tab, no file/terminal tabs), or "terminal" (mosh —
+   * the terminal fills the whole tab, no file browsing).
+   */
+  kind: "file" | "display" | "terminal";
 }
 
 // session:connect    SessionConnectRequest → SessionInfo

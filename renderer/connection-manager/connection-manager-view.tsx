@@ -65,9 +65,10 @@ const PROTOCOL_LABELS: Record<Protocol, string> = {
   ftps: "FTPS",
   ssh: "SSH",
   rdp: "RDP",
+  mosh: "Mosh",
 };
 
-const PROTOCOL_ORDER: Protocol[] = ["sftp", "ssh", "ftp", "ftps", "rdp"];
+const PROTOCOL_ORDER: Protocol[] = ["sftp", "ssh", "mosh", "ftp", "ftps", "rdp"];
 
 const PROTOCOL_DOT: Record<Protocol, string> = {
   sftp: "bg-blue-500",
@@ -75,6 +76,7 @@ const PROTOCOL_DOT: Record<Protocol, string> = {
   ftps: "bg-purple-500",
   ssh: "bg-orange-500",
   rdp: "bg-fuchsia-500",
+  mosh: "bg-yellow-500",
 };
 
 function getProtocolColor(protocol: Protocol): BadgeColor {
@@ -84,6 +86,7 @@ function getProtocolColor(protocol: Protocol): BadgeColor {
     case "ftps": return "purple";
     case "ssh": return "orange";
     case "rdp": return "magenta";
+    case "mosh": return "yellow";
   }
 }
 

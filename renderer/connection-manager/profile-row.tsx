@@ -29,6 +29,7 @@ const PROTOCOL_LABELS: Record<string, string> = {
   ftps: "FTPS",
   ssh: "SSH",
   rdp: "RDP",
+  mosh: "Mosh",
 };
 
 export function ProfileRow({

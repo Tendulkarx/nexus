@@ -40,6 +40,7 @@ function getProtocolColor(protocol: Protocol): BadgeColor {
     case "ftps": return "purple";
     case "ssh": return "orange";
     case "rdp": return "magenta";
+    case "mosh": return "yellow";
     default: return "secondary";
   }
 }
@@ -50,6 +51,7 @@ const PROTOCOL_LABELS: Record<string, string> = {
   ftps: "FTPS",
   ssh: "SSH",
   rdp: "RDP",
+  mosh: "Mosh",
 };
 
 function protocolLabel(protocol: Protocol): string {
