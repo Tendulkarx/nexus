@@ -51,7 +51,7 @@ interface QuickEditDialogProps {
  * common sysadmin/dev file types rather than every possible language; falls
  * back to plain text (no extension) for anything unrecognized.
  */
-function languageExtension(filename: string): Extension | null {
+export function languageExtension(filename: string): Extension | null {
   const name = filename.toLowerCase();
   const ext = name.includes(".") ? name.slice(name.lastIndexOf(".") + 1) : "";
 
@@ -114,7 +114,7 @@ function languageExtension(filename: string): Extension | null {
   }
 }
 
-const nexusHighlightStyle = HighlightStyle.define([
+export const nexusHighlightStyle = HighlightStyle.define([
   { tag: [t.keyword, t.controlKeyword, t.operatorKeyword, t.modifier, t.self], color: "var(--cm-keyword)" },
   { tag: [t.string, t.special(t.string), t.regexp], color: "var(--cm-string)" },
   { tag: [t.comment, t.lineComment, t.blockComment], color: "var(--cm-comment)", fontStyle: "italic" },
@@ -133,7 +133,7 @@ const nexusHighlightStyle = HighlightStyle.define([
   { tag: t.invalid, color: "var(--color-support-red)" },
 ]);
 
-const editorTheme = EditorView.theme({
+export const editorTheme = EditorView.theme({
   "&": {
     color: "var(--color-primary)",
     backgroundColor: "transparent",

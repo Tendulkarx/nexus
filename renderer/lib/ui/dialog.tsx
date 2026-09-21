@@ -8,6 +8,7 @@ const SIZE_CLASSES = {
   small: "max-w-sm",
   medium: "max-w-lg",
   large: "max-w-2xl",
+  xlarge: "max-w-5xl",
 } as const;
 
 interface DialogProps {

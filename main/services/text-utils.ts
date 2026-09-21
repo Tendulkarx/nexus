@@ -1,10 +1,15 @@
 /**
- * Shared "is this a text file" heuristics used by both the file preview
- * (Quick Look) and the in-app quick editor: a NUL-byte binary-content sniff
- * (authoritative — always checked against the actual bytes), plus an
- * extension allowlist the renderer can use to decide whether to even offer
- * "Quick Edit" before the content comes back over IPC.
+ * Shared "is this a text file" heuristics used by the file preview (Quick
+ * Look), the in-app quick editor, and the sync plan's diff view: a NUL-byte
+ * binary-content sniff (authoritative — always checked against the actual
+ * bytes), plus an extension allowlist callers can use to decide whether to
+ * even offer a text-only feature before the content comes back over IPC.
  */
+import type { ReadFileResult } from "@shared/ipc-contract";
+
+/** Preview/inline-edit/diff size cutoff, shared so every feature agrees on the same cap. */
+export const PREVIEW_MAX_BYTES = 256 * 1024;
+
 const TEXT_EXTENSIONS = new Set([
   "txt", "md", "markdown", "json", "jsonc", "yml", "yaml", "toml", "ini", "cfg", "conf", "env",
   "js", "jsx", "ts", "tsx", "mjs", "cjs", "py", "rb", "go", "rs", "java", "c", "cc", "cpp", "h", "hpp",
@@ -17,6 +22,17 @@ const TEXT_FILENAMES = new Set(["dockerfile", "makefile", "gitignore", "gitattri
 
 export function isBinaryContent(buffer: Buffer): boolean {
   return buffer.includes(0);
+}
+
+/** Converts a raw buffer (already capped at PREVIEW_MAX_BYTES) into a text-preview result, detecting binary content. */
+export function toTextPreview(buffer: Buffer): ReadFileResult {
+  const isBinary = isBinaryContent(buffer);
+  return {
+    text: isBinary ? "" : buffer.toString("utf-8"),
+    size: buffer.length,
+    truncated: buffer.length >= PREVIEW_MAX_BYTES,
+    isBinary,
+  };
 }
 
 export function looksLikeTextByName(name: string): boolean {
