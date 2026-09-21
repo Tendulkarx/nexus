@@ -26,8 +26,18 @@ class FakeFtpSession {
   }
 }
 
+class FakeMoshSession {
+  static connect = vi.fn();
+  info: SessionInfo;
+  close = vi.fn().mockResolvedValue(undefined);
+  constructor(info: SessionInfo) {
+    this.info = info;
+  }
+}
+
 vi.mock("./sessions/ssh-session.js", () => ({ SshSession: FakeSshSession }));
 vi.mock("./sessions/ftp-session.js", () => ({ FtpSession: FakeFtpSession }));
+vi.mock("./sessions/mosh-session.js", () => ({ MoshSession: FakeMoshSession }));
 
 const connectionStore = { getRaw: vi.fn(), recordConnected: vi.fn().mockResolvedValue(undefined) };
 vi.mock("./connection-store.js", () => ({ connectionStore }));
@@ -49,6 +59,7 @@ Object.setPrototypeOf(FakeFtpSession.prototype, BaseSession.prototype);
 
 const { SessionManager } = await import("./session-manager.js");
 const { DisplaySession } = await import("./sessions/display-session.js");
+const { MoshSession } = await import("./sessions/mosh-session.js");
 
 function makeInfo(overrides: Partial<SessionInfo> = {}): SessionInfo {
   return {
@@ -76,6 +87,12 @@ function resetDefaultConnectBehavior() {
   FakeFtpSession.connect.mockImplementation(
     async (sessionId: string, profile: ConnectionProfile) =>
       new FakeFtpSession(makeInfo({ sessionId, protocol: profile.protocol, host: profile.host, username: profile.username })),
+  );
+  FakeMoshSession.connect.mockImplementation(
+    async (sessionId: string, profile: ConnectionProfile) =>
+      new FakeMoshSession(
+        makeInfo({ sessionId, protocol: profile.protocol, host: profile.host, username: profile.username, kind: "terminal" }),
+      ),
   );
 }
 
@@ -128,6 +145,18 @@ describe("SessionManager", () => {
     expect(FakeSshSession.connect).not.toHaveBeenCalled();
     expect(FakeFtpSession.connect).not.toHaveBeenCalled();
     expect(manager.getDisplay(info.sessionId)).toBeInstanceOf(DisplaySession);
+  });
+
+  it("routes mosh profiles to a MoshSession", async () => {
+    const manager = new SessionManager();
+
+    const info = await manager.connect(inlineRequest("mosh"));
+
+    expect(info.kind).toBe("terminal");
+    expect(FakeMoshSession.connect).toHaveBeenCalledTimes(1);
+    expect(FakeSshSession.connect).not.toHaveBeenCalled();
+    expect(FakeFtpSession.connect).not.toHaveBeenCalled();
+    expect(manager.getTerminal(info.sessionId)).toBeInstanceOf(MoshSession);
   });
 
   it("decrypts a stored profile's secret, but an inline request secret overrides it", async () => {
@@ -234,6 +263,13 @@ describe("SessionManager", () => {
     expect(() => manager.get(info.sessionId)).toThrow(/Remote Desktop session/);
   });
 
+  it("get() rejects a mosh session as having no filesystem", async () => {
+    const manager = new SessionManager();
+    const info = await manager.connect(inlineRequest("mosh"));
+
+    expect(() => manager.get(info.sessionId)).toThrow(/Mosh session/);
+  });
+
   it("get() throws for an unknown sessionId", () => {
     const manager = new SessionManager();
     expect(() => manager.get("nope")).toThrow(/No active session/);
@@ -246,11 +282,29 @@ describe("SessionManager", () => {
     expect(() => manager.getSsh(info.sessionId)).toThrow(/interactive terminal/);
   });
 
+  it("getSsh() rejects a mosh session — search/port-forward need real SSH exec, which mosh doesn't have", async () => {
+    const manager = new SessionManager();
+    const info = await manager.connect(inlineRequest("mosh"));
+
+    expect(() => manager.getSsh(info.sessionId)).toThrow();
+  });
+
   it("getDisplay() rejects a filesystem session", async () => {
     const manager = new SessionManager();
     const info = await manager.connect(inlineRequest("sftp"));
 
     expect(() => manager.getDisplay(info.sessionId)).toThrow(/not a Remote Desktop session/);
+  });
+
+  it("getTerminal() accepts SSH and Mosh sessions but rejects FTP", async () => {
+    const manager = new SessionManager();
+    const sshInfo = await manager.connect(inlineRequest("sftp"));
+    const moshInfo = await manager.connect(inlineRequest("mosh"));
+    const ftpInfo = await manager.connect(inlineRequest("ftp"));
+
+    expect(manager.getTerminal(sshInfo.sessionId)).toBeInstanceOf(FakeSshSession);
+    expect(manager.getTerminal(moshInfo.sessionId)).toBeInstanceOf(MoshSession);
+    expect(() => manager.getTerminal(ftpInfo.sessionId)).toThrow(/interactive terminal/);
   });
 
   it("disconnect() closes and removes the session; is a no-op for an unknown id", async () => {

@@ -43,6 +43,7 @@ const DEFAULT_PORTS: Record<Protocol, number> = {
   ftps: 990,
   ssh: 22,
   rdp: 3389,
+  mosh: 22,
 };
 
 export function ConnectionForm({ editProfile, duplicateFrom, folders, onSave, onCancel }: ConnectionFormProps) {
@@ -171,6 +172,7 @@ export function ConnectionForm({ editProfile, duplicateFrom, folders, onSave, on
                 <SelectItem value="ftp">FTP</SelectItem>
                 <SelectItem value="ftps">FTPS</SelectItem>
                 <SelectItem value="ssh">SSH</SelectItem>
+                <SelectItem value="mosh">Mosh</SelectItem>
                 <SelectItem value="rdp">RDP (Remote Desktop)</SelectItem>
               </SelectContent>
             </Select>
@@ -257,7 +259,7 @@ export function ConnectionForm({ editProfile, duplicateFrom, folders, onSave, on
           )}
         </FieldSet>
 
-        {(protocol === "sftp" || protocol === "ssh") && (
+        {(protocol === "sftp" || protocol === "ssh" || protocol === "mosh") && (
           <FieldSet title="Jump Host (Bastion)">
             <Field orientation="horizontal">
               <label className="flex items-center gap-2 text-sm text-primary">
@@ -354,7 +356,7 @@ export function ConnectionForm({ editProfile, duplicateFrom, folders, onSave, on
           </FieldSet>
         )}
 
-        {(protocol === "sftp" || protocol === "ssh") && (
+        {(protocol === "sftp" || protocol === "ssh" || protocol === "mosh") && (
           <FieldSet title="SSH">
             <Field orientation="horizontal">
               <label className="flex items-center gap-2 text-sm text-primary">

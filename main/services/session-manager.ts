@@ -14,12 +14,13 @@ import { notify } from "./notification-service.js";
 import { BaseSession } from "./sessions/base-session.js";
 import { DisplaySession } from "./sessions/display-session.js";
 import { FtpSession } from "./sessions/ftp-session.js";
+import { MoshSession } from "./sessions/mosh-session.js";
 import { SshSession } from "./sessions/ssh-session.js";
 
 import type { ConnectionProfile, SessionConnectRequest, SessionInfo } from "@shared/ipc-contract";
 
-/** Anything SessionManager can track: a filesystem session (BaseSession) or a display session. Both expose `info` + `close()`. */
-type ManagedSession = BaseSession | DisplaySession;
+/** Anything SessionManager can track: a filesystem session (BaseSession), a display session, or a mosh session. All expose `info` + `close()`. */
+type ManagedSession = BaseSession | DisplaySession | MoshSession;
 
 export class SessionManager {
   private sessions = new Map<string, ManagedSession>();
@@ -47,6 +48,12 @@ export class SessionManager {
         // native view/session only starts once the renderer's Remote Desktop
         // tab is mounted and reports its bounds via display:connect.
         session = new DisplaySession(sessionId, profile, secret);
+        break;
+      case "mosh":
+        // Like DisplaySession, this only checks that mosh-client is
+        // installed locally — the actual SSH-bootstrap-then-mosh-client dance
+        // happens lazily per terminal tab, see MoshSession.openShell().
+        session = await MoshSession.connect(sessionId, profile, secret, jumpSecret);
         break;
     }
 
@@ -141,23 +148,32 @@ export class SessionManager {
     throw new Error("session:connect requires either profileId or inlineProfile");
   }
 
-  /** Returns the session as a filesystem session (SFTP/SSH/FTP/FTPS), or throws for a display (rdp) session. */
+  /** Returns the session as a filesystem session (SFTP/SSH/FTP/FTPS), or throws for a display (rdp) or terminal-only (mosh) session. */
   get(sessionId: string): BaseSession {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error(`No active session: ${sessionId}`);
     if (!(session instanceof BaseSession)) {
-      throw new Error("This connection is a Remote Desktop session and has no filesystem");
+      const kindLabel = session.info.kind === "display" ? "Remote Desktop" : "Mosh";
+      throw new Error(`This connection is a ${kindLabel} session and has no filesystem`);
     }
     return session;
   }
 
-  /** Returns the session as an SSH session, or throws if it cannot host a terminal. */
+  /** Returns the session as an SSH session (exec/forward-capable), or throws otherwise — used by remote:search and port forwards, which mosh can't support. */
   getSsh(sessionId: string): SshSession {
     const session = this.get(sessionId);
     if (!(session instanceof SshSession)) {
       throw new Error("This connection does not support an interactive terminal");
     }
     return session;
+  }
+
+  /** Returns the session as anything that can host an interactive terminal (SSH or Mosh), or throws otherwise. */
+  getTerminal(sessionId: string): SshSession | MoshSession {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new Error(`No active session: ${sessionId}`);
+    if (session instanceof SshSession || session instanceof MoshSession) return session;
+    throw new Error("This connection does not support an interactive terminal");
   }
 
   /** Returns the session as a display (rdp) session, or throws if it's a filesystem session. */

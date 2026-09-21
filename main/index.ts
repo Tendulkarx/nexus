@@ -20,7 +20,7 @@ import { editManager } from "./services/edit-manager.js";
 import { prepareDragDownload } from "./services/drag-download.js";
 import { portForwardManager } from "./services/port-forward-manager.js";
 import { sessionManager } from "./services/session-manager.js";
-import { sshTerminalService } from "./services/ssh-terminal-service.js";
+import { terminalService } from "./services/terminal-service.js";
 import { transferManager } from "./services/transfer-manager.js";
 import { logger } from "./logger.js";
 
@@ -248,7 +248,7 @@ app.on("before-quit", () => {
   logger.info("main", "App before-quit, cleaning up connections...");
   transferManager.cancelAll();
   editManager.closeAll();
-  sshTerminalService.closeAll();
+  terminalService.closeAll();
   void portForwardManager.closeAll();
   void sessionManager.closeAll();
 });

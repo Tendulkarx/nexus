@@ -56,7 +56,7 @@ web-side `renderer/` — both must pass), `npm run lint`, and `npm run test` aft
   popup) directly — Electron has no built-in bridge for these, so they're hand-rolled to match what
   `preload.ts`/the renderer already expect.
 - `main/services/` holds the actual logic, mostly singletons exported at module scope (e.g. `sessionManager`,
-  `credentialVault`, `transferManager`, `editManager`, `sshTerminalService`). Handlers stay thin and delegate
+  `credentialVault`, `transferManager`, `editManager`, `terminalService`). Handlers stay thin and delegate
   to these.
 - `main/services/session-manager.ts` owns every live remote connection, keyed by a generated `sessionId`. It
   dispatches to a protocol-specific session class based on `ConnectionProfile.protocol`:
@@ -64,11 +64,17 @@ web-side `renderer/` — both must pass), `npm run lint`, and `npm run test` aft
   - `ftp`/`ftps` → `FtpSession` (wraps `basic-ftp`)
   - `rdp`/`vnc` → `DisplaySession` (drives the native addon; doesn't open a connection until the renderer's
     Remote Desktop tab actually mounts and reports its bounds via `display:connect`)
+  - `mosh` → `MoshSession` (terminal-only, no filesystem; each terminal tab SSHes in to bootstrap
+    `mosh-server` — reusing `sessions/ssh-connect.ts`'s host-key/jump-host helpers, shared with `SshSession`
+    — then spawns the local `mosh-client` binary; see that file's doc comment for the known tty limitation)
   - `SshSession`/`FtpSession` extend `main/services/sessions/base-session.ts`'s `BaseSession` (file-oriented:
-    list/mkdir/rename/delete/upload/download/readFile/putFile/close). `DisplaySession` does not — it's a
-    different capability (no filesystem), so `sessionManager.get()` throws if you try to use a display
-    session as a filesystem session, and `sessionManager.getDisplay()`/`getSsh()` are the typed accessors for
-    the other cases. When adding code that touches "the current session," check which accessor you need.
+    list/mkdir/rename/delete/upload/download/readFile/putFile/close). `DisplaySession`/`MoshSession` do not —
+    they're a different capability each (no filesystem), so `sessionManager.get()` throws if you try to use
+    either as a filesystem session, and `sessionManager.getDisplay()`/`getSsh()`/`getTerminal()` are the typed
+    accessors for the other cases (`getTerminal()` accepts either `SshSession` or `MoshSession` — both expose
+    the same `openShell()`-shaped `TerminalChannel`, see `sessions/terminal-channel.ts`, and `terminalService`
+    is the one thing that dispatches to it generically). When adding code that touches "the current session,"
+    check which accessor you need.
 - Secrets: `main/services/credential-vault.ts` encrypts connection passwords/passphrases with Electron's
   `safeStorage` before `main/services/connection-store.ts` persists them to disk via `data-store.ts` (a
   generic cached-JSON store under `app.getPath("userData")` — never inside the repo). Renderer-facing

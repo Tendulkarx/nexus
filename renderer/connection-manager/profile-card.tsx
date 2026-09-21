@@ -35,6 +35,7 @@ const PROTOCOL_LABELS: Record<string, string> = {
   ftps: "FTPS",
   ssh: "SSH",
   rdp: "RDP",
+  mosh: "Mosh",
 };
 
 const PROTOCOL_BG: Record<string, string> = {
@@ -43,6 +44,7 @@ const PROTOCOL_BG: Record<string, string> = {
   ftps: "from-purple-500/20 to-purple-600/5",
   ssh: "from-orange-500/20 to-orange-600/5",
   rdp: "from-pink-500/20 to-pink-600/5",
+  mosh: "from-yellow-500/20 to-yellow-600/5",
 };
 
 export function ProfileCard({

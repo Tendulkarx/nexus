@@ -1,6 +1,9 @@
 /**
- * Manages interactive SSH shell channels. Server output is coalesced over a
- * short interval before being emitted to the renderer to avoid per-byte IPC.
+ * Manages interactive shell channels — SSH shells (SshSession) and mosh
+ * sessions (MoshSession) share this service, since both hand back the same
+ * TerminalChannel duck type from their openShell() method (see
+ * sessions/terminal-channel.ts). Server output is coalesced over a short
+ * interval before being emitted to the renderer to avoid per-byte IPC.
  */
 import { randomUUID } from "crypto";
 
@@ -11,27 +14,27 @@ import { sessionManager } from "./session-manager.js";
 
 import { IPC } from "../../renderer/shared/ipc-contract.js";
 import type { TerminalDataEvent, TerminalExitEvent } from "@shared/ipc-contract";
-import type { ClientChannel } from "ssh2";
+import type { TerminalChannel } from "./sessions/terminal-channel.js";
 
 const FLUSH_INTERVAL_MS = 16;
 
 interface Terminal {
-  channel: ClientChannel;
+  channel: TerminalChannel;
   buffer: string[];
   flushTimer: NodeJS.Timeout | null;
 }
 
-export class SshTerminalService {
+export class TerminalService {
   private terminals = new Map<string, Terminal>();
 
   async open(sessionId: string, cols: number, rows: number): Promise<string> {
-    const session = sessionManager.getSsh(sessionId);
+    const session = sessionManager.getTerminal(sessionId);
     const channel = await session.openShell(cols, rows);
     const terminalId = randomUUID();
     const term: Terminal = { channel, buffer: [], flushTimer: null };
     this.terminals.set(terminalId, term);
 
-    const onData = (data: Buffer) => this.enqueue(terminalId, data.toString("utf-8"));
+    const onData = (data: Buffer | string) => this.enqueue(terminalId, data.toString());
     channel.on("data", onData);
     channel.stderr?.on("data", onData);
 
@@ -44,7 +47,7 @@ export class SshTerminalService {
       }
     }
 
-    logger.info("ssh-terminal", "Opened terminal", { terminalId, sessionId });
+    logger.info("terminal", "Opened terminal", { terminalId, sessionId });
     return terminalId;
   }
 
@@ -95,7 +98,7 @@ export class SshTerminalService {
     if (term.flushTimer) clearTimeout(term.flushTimer);
     this.terminals.delete(terminalId);
     emitToRenderer(IPC.terminal.exit, { terminalId, code } satisfies TerminalExitEvent);
-    logger.info("ssh-terminal", "Terminal exited", { terminalId, code });
+    logger.info("terminal", "Terminal exited", { terminalId, code });
   }
 
   closeAll(): void {
@@ -111,4 +114,4 @@ export class SshTerminalService {
   }
 }
 
-export const sshTerminalService = new SshTerminalService();
+export const terminalService = new TerminalService();

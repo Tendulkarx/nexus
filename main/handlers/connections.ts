@@ -12,7 +12,7 @@ import { exportConnections, importConnections } from "../services/connection-tra
 import { IPC } from "../../renderer/shared/ipc-contract.js";
 import type { AuthType, ConnectionInput, JumpHostInput, Protocol } from "@shared/ipc-contract";
 
-const PROTOCOLS: Protocol[] = ["sftp", "ftp", "ftps", "ssh", "rdp"];
+const PROTOCOLS: Protocol[] = ["sftp", "ftp", "ftps", "ssh", "rdp", "mosh"];
 const AUTH_TYPES: AuthType[] = ["password", "key"];
 
 function coerceJumpHost(value: unknown, context: string): JumpHostInput {

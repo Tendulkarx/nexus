@@ -153,6 +153,12 @@ export function WorkspaceView({ sessionId, onPopOut }: WorkspaceViewProps) {
         <div className="flex-1 min-h-0">
           <RemoteDesktopPane session={session} />
         </div>
+      ) : session.kind === "terminal" ? (
+        // Mosh — terminal-only, no filesystem, so the terminal fills the
+        // whole tab instead of living in a dockable bottom panel.
+        <div className="flex-1 min-h-0">
+          <TerminalTabs session={session} isVisible={true} />
+        </div>
       ) : (
         <>
           <PanelGroup storageKey="workspace-vertical" direction="vertical" className="flex-1 min-h-0">
