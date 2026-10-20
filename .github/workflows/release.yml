@@ -61,8 +61,14 @@ jobs:
           key: freerdp-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('native/nexus-display-host/scripts/*.sh') }}
 
       - run: npm ci
+      # Not `npm run build:native`: a plain `npm install` there compiles the add-on straight
+      # away (its implicit install script), before ensure-freerdp.sh has built FreeRDP.
+      # Spelled out here so re-running an older tag uses the fixed order too.
       - name: Build the RDP add-on
-        run: npm run build:native
+        working-directory: native/nexus-display-host
+        run: |
+          npm ci --ignore-scripts
+          npm run build
       - name: Build the app
         run: npm run build
 

@@ -10,7 +10,7 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "build:mac": "electron-vite build && electron-builder --mac",
-    "build:native": "cd native/nexus-display-host && npm install && npm run build",
+    "build:native": "cd native/nexus-display-host && npm install --ignore-scripts && npm run build",
     "type-check": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "lint": "eslint .",
     "format": "prettier --write .",
