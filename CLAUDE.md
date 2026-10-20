@@ -228,3 +228,17 @@ so a new protocol fails type-checking until it's accepted there.
 
 `_to_delete/` at the repo root is leftover scratch/archive material (old tarballs, an unused `home-view.tsx`)
 staged for removal — don't treat it as part of the active source tree.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs live in GitHub Issues, managed with the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default triage labels (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root, created when terms or decisions are first settled. See `docs/agents/domain.md`.
