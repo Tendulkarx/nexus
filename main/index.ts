@@ -22,8 +22,13 @@ import { prepareDragDownload } from "./services/drag-download.js";
 import { portForwardManager } from "./services/port-forward-manager.js";
 import { sessionManager } from "./services/session-manager.js";
 import { terminalService } from "./services/terminal-service.js";
+import { scanService } from "./services/tools/scan-service.js";
+import { homebrewService } from "./services/tools/homebrew.js";
+import { serverManager } from "./services/servers/server-manager.js";
+import { appSettingsStore, type ThemeSource } from "./services/app-settings-store.js";
 import { transferManager } from "./services/transfer-manager.js";
 import { logger } from "./logger.js";
+import type { Shortcuts } from "../renderer/shared/shortcuts.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -108,7 +113,10 @@ async function createMainWindow() {
 }
 
 // ── Application menu ──────────────────────────────────────────────────
-function setupApplicationMenu(): void {
+/** Builds the menu with the user's shortcuts (Settings › Keyboard Shortcuts); "" leaves an item without one. */
+function setupApplicationMenu(shortcuts: Shortcuts): void {
+  const key = (accelerator: string) => (accelerator ? { accelerator } : {});
+  const send = (action: string) => () => mainWindow?.webContents.send("menu:action", action);
   const template: MenuItemConstructorOptions[] = [
     {
       label: "App",
@@ -117,7 +125,7 @@ function setupApplicationMenu(): void {
         { type: "separator" },
         {
           label: "Settings…",
-          accelerator: "Command+,",
+          ...key(shortcuts.settings),
           click: async () => await openSettingsWindow(),
         },
         { type: "separator" },
@@ -133,16 +141,13 @@ function setupApplicationMenu(): void {
     {
       label: "File",
       submenu: [
-        {
-          label: "New Connection",
-          accelerator: "CommandOrControl+N",
-          click: () => mainWindow?.webContents.send("menu:action", "new-connection"),
-        },
-        {
-          label: "Close Tab",
-          accelerator: "CommandOrControl+W",
-          click: () => mainWindow?.webContents.send("menu:action", "close-tab"),
-        },
+        { label: "New Connection", ...key(shortcuts.newSession), click: send("new-connection") },
+        { label: "New Local Shell", ...key(shortcuts.newLocalShell), click: send("new-local-shell") },
+        { type: "separator" },
+        { label: "Split Right", ...key(shortcuts.splitRight), click: send("split-right") },
+        { label: "Split Down", ...key(shortcuts.splitDown), click: send("split-down") },
+        { type: "separator" },
+        { label: "Close Tab", ...key(shortcuts.closeTab), click: send("close-tab") },
         { type: "separator" },
         { role: "close" },
       ],
@@ -186,8 +191,9 @@ function registerNativeBridgeHandlers(): void {
     shouldUseDarkColors: nativeTheme.shouldUseDarkColors,
     themeSource: nativeTheme.themeSource,
   }));
-  ipcMain.handle("nativeTheme:setThemeSource", (_e, source: "system" | "light" | "dark") => {
+  ipcMain.handle("nativeTheme:setThemeSource", async (_e, source: ThemeSource) => {
     nativeTheme.themeSource = source;
+    await appSettingsStore.setThemeSource(source);
     return true;
   });
   ipcMain.handle("nativeTheme:getShouldUseDarkColors", () => nativeTheme.shouldUseDarkColors);
@@ -250,6 +256,9 @@ app.on("before-quit", () => {
   transferManager.cancelAll();
   editManager.closeAll();
   terminalService.closeAll();
+  scanService.cancelAll();
+  homebrewService.cancelAll();
+  void serverManager.stopAll();
   void portForwardManager.closeAll();
   void sessionManager.closeAll();
 });
@@ -272,7 +281,10 @@ function checkForUpdates(): void {
 
 // ── App ready ─────────────────────────────────────────────────────────
 app.whenReady().then(async () => {
-  setupApplicationMenu();
+  // Before any window opens, or menus and the first frame use the macOS appearance instead.
+  nativeTheme.themeSource = await appSettingsStore.getThemeSource();
+  setupApplicationMenu((await appSettingsStore.getPreferences()).shortcuts);
+  appSettingsStore.onPreferencesChanged((prefs) => setupApplicationMenu(prefs.shortcuts));
   registerDragDownloadProtocol();
   try {
     await createMainWindow();

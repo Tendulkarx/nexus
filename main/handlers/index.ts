@@ -12,13 +12,16 @@ import { registerFilesystemHandlers } from "./filesystem.js";
 import { registerPortForwardHandlers } from "./port-forwards.js";
 import { registerRemotePlacesHandlers } from "./remote-places.js";
 import { registerSearchHandlers } from "./search.js";
+import { registerServerHandlers } from "./servers.js";
 import { registerSessionHandlers } from "./sessions.js";
 import { registerSettingsHandlers } from "./settings.js";
 import { registerSnippetHandlers } from "./snippets.js";
 import { registerSshConfigHandlers } from "./ssh-config.js";
 import { registerSyncHandlers } from "./sync.js";
 import { registerTerminalHandlers } from "./terminal.js";
+import { registerToolHandlers } from "./tools.js";
 import { registerTransferHandlers } from "./transfers.js";
+import { registerVncHandlers } from "./vnc.js";
 import { asRecord, reqString } from "./validate.js";
 import { getSettingsWindow, openSettingsWindow } from "../windows/settings-window.js";
 import { openSessionWindow } from "../windows/session-window.js";
@@ -69,6 +72,9 @@ export function registerHandlers(): void {
   registerRemotePlacesHandlers();
   registerActivityLogHandlers();
   registerSettingsHandlers();
+  registerToolHandlers();
+  registerServerHandlers();
+  registerVncHandlers();
 
   logger.info("handlers", "✓ IPC handlers registered");
 }

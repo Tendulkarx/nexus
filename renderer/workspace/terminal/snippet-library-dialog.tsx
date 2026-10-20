@@ -3,19 +3,21 @@
  * via main/services/snippet-store.ts), and — when opened with an `onRun`
  * callback from an active terminal — run one by sending its text straight to
  * the backend PTY, the same path terminal-pane.tsx uses for user keystrokes.
+ * Recorded macros (snippets with `macro` steps, made with a terminal's record
+ * button) live in the same list; only their name and tags are editable here.
  */
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PlusIcon, PencilIcon, TrashIcon, PlayIcon } from "lucide-react";
-import { Dialog, Button, Input, Field, FieldSet, Text, toast } from "@renderer/lib/ui";
+import { Badge, Dialog, Button, Input, Field, FieldSet, Text, toast } from "@renderer/lib/ui";
 import { ipc } from "@renderer/lib/ipc";
 import type { CommandSnippet } from "@shared/ipc-contract";
 
 interface SnippetLibraryDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** When provided, each snippet row gets a Run button that calls this with the snippet's command text. */
-  onRun?: (command: string) => void;
+  /** When provided, each row gets a Run button that calls this with the snippet (or macro) to run. */
+  onRun?: (snippet: CommandSnippet) => void;
 }
 
 interface EditState {
@@ -24,9 +26,11 @@ interface EditState {
   name: string;
   command: string;
   tags: string;
+  /** Editing a recorded macro: its keystrokes aren't editable, so the command field is hidden. */
+  isMacro: boolean;
 }
 
-const EMPTY_EDIT: EditState = { id: null, name: "", command: "", tags: "" };
+const EMPTY_EDIT: EditState = { id: null, name: "", command: "", tags: "", isMacro: false };
 
 export function SnippetLibraryDialog({ open, onOpenChange, onRun }: SnippetLibraryDialogProps) {
   const qc = useQueryClient();
@@ -66,7 +70,13 @@ export function SnippetLibraryDialog({ open, onOpenChange, onRun }: SnippetLibra
   });
 
   function startEdit(snippet: CommandSnippet) {
-    setEditing({ id: snippet.id, name: snippet.name, command: snippet.command, tags: snippet.tags.join(", ") });
+    setEditing({
+      id: snippet.id,
+      name: snippet.name,
+      command: snippet.command,
+      tags: snippet.tags.join(", "),
+      isMacro: Boolean(snippet.macro),
+    });
   }
 
   const isValid = Boolean(editing?.name.trim() && editing?.command.trim());
@@ -78,7 +88,7 @@ export function SnippetLibraryDialog({ open, onOpenChange, onRun }: SnippetLibra
         onOpenChange(o);
         if (!o) setEditing(null);
       }}
-      title="Command Snippets"
+      title="Snippets & Macros"
       size="medium"
     >
       {editing ? (
@@ -92,15 +102,17 @@ export function SnippetLibraryDialog({ open, onOpenChange, onRun }: SnippetLibra
                 onChange={(e) => setEditing({ ...editing, name: e.target.value })}
               />
             </Field>
-            <Field label="Command" orientation="horizontal">
-              <textarea
-                placeholder="sudo systemctl restart nginx"
-                value={editing.command}
-                onChange={(e) => setEditing({ ...editing, command: e.target.value })}
-                rows={3}
-                className="w-full rounded-medium border border-field bg-transparent px-2.5 py-1.5 text-sm outline-none transition-colors focus:border-accent focus:ring-1 focus:ring-accent/40 placeholder:text-tertiary font-mono"
-              />
-            </Field>
+            {!editing.isMacro && (
+              <Field label="Command" orientation="horizontal">
+                <textarea
+                  placeholder="sudo systemctl restart nginx"
+                  value={editing.command}
+                  onChange={(e) => setEditing({ ...editing, command: e.target.value })}
+                  rows={3}
+                  className="w-full rounded-medium border border-field bg-transparent px-2.5 py-1.5 text-sm outline-none transition-colors focus:border-accent focus:ring-1 focus:ring-accent/40 placeholder:text-tertiary font-mono"
+                />
+              </Field>
+            )}
             <Field label="Tags" description="Comma-separated" orientation="horizontal">
               <Input
                 placeholder="ops, nginx"
@@ -132,7 +144,10 @@ export function SnippetLibraryDialog({ open, onOpenChange, onRun }: SnippetLibra
           </div>
           {snippets.length === 0 ? (
             <div className="p-4">
-              <Text color="secondary">No snippets yet. Add one to reuse it across terminals.</Text>
+              <Text color="secondary">
+                No snippets yet. Add one to reuse it across terminals, or record a macro with a terminal&apos;s ●
+                button.
+              </Text>
             </div>
           ) : (
             snippets.map((snippet) => (
@@ -141,9 +156,12 @@ export function SnippetLibraryDialog({ open, onOpenChange, onRun }: SnippetLibra
                 className="flex items-center gap-2.5 px-4 py-2.5 border-b border-separator last:border-b-0"
               >
                 <div className="flex flex-col min-w-0 flex-1">
-                  <Text variant="strong" truncate>
-                    {snippet.name}
-                  </Text>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <Text variant="strong" truncate>
+                      {snippet.name}
+                    </Text>
+                    {snippet.macro && <Badge color="purple">Macro</Badge>}
+                  </div>
                   <Text variant="small" color="tertiary" truncate className="font-mono">
                     {snippet.command}
                   </Text>
@@ -154,7 +172,7 @@ export function SnippetLibraryDialog({ open, onOpenChange, onRun }: SnippetLibra
                     size="small"
                     iconOnly
                     onClick={() => {
-                      onRun(snippet.command);
+                      onRun(snippet);
                       onOpenChange(false);
                     }}
                     aria-label={`Run ${snippet.name}`}

@@ -124,6 +124,7 @@ interface PortableProfile {
   defaultRemotePath?: string | null;
   color?: string | null;
   agentForward?: boolean;
+  x11Forward?: boolean;
   onConnectCommand?: string | null;
   /** Plaintext — see PortableJumpHost.secret. */
   secret?: string | null;
@@ -192,6 +193,7 @@ async function profileToPortable(profile: ConnectionProfile): Promise<PortablePr
     defaultRemotePath: profile.defaultRemotePath ?? null,
     color: profile.color ?? null,
     agentForward: profile.agentForward ?? false,
+    x11Forward: profile.x11Forward ?? false,
     onConnectCommand: profile.onConnectCommand ?? null,
     secret,
     jumpHost,
@@ -229,6 +231,7 @@ async function portableToProfile(portable: PortableProfile): Promise<ConnectionP
     secret,
     jumpHost,
     agentForward: portable.agentForward ?? false,
+    x11Forward: portable.x11Forward ?? false,
     onConnectCommand: portable.onConnectCommand ?? null,
   };
 }

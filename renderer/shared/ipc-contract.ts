@@ -8,16 +8,19 @@
  * window.nexusAPI.ipc.invoke). event↓ = backend→renderer via webContents.send
  * (subscribe with ipc.on). event↑ = renderer→backend via ipc.send (ipcMain.on).
  */
+import type { PreferencesPatch } from "./preferences";
+import type { MacroStep } from "./macros";
 
 // ── Domain models ────────────────────────────────────────────────────────
 
 /**
  * sftp/ftp/ftps/ssh are file-transfer protocols (browse + optional terminal);
  * rdp is a display protocol (renders a remote desktop, no file browsing);
- * mosh is a terminal-only protocol (roaming-resilient shell over UDP, no
- * file browsing either) — see SessionInfo.kind.
+ * mosh, telnet and serial are terminal-only (no file browsing) — see
+ * SessionInfo.kind. A serial profile keeps its device path in `host` and its
+ * speed in baud in `port`.
  */
-export type Protocol = "sftp" | "ftp" | "ftps" | "ssh" | "rdp" | "mosh";
+export type Protocol = "sftp" | "ftp" | "ftps" | "ssh" | "rdp" | "vnc" | "mosh" | "telnet" | "serial";
 export type AuthType = "password" | "key";
 
 /**
@@ -69,6 +72,8 @@ export interface ConnectionProfile {
   jumpHost?: JumpHost | null;
   /** sftp/ssh only — forward SSH_AUTH_SOCK so remote commands (git pull, sudo chains) can use local agent keys. */
   agentForward?: boolean;
+  /** sftp/ssh only — forward X11 so remote GUI apps open in XQuartz (see main/services/x11.ts). */
+  x11Forward?: boolean;
   /** sftp/ssh only — command(s) auto-typed into the terminal once a shell opens on this connection, one per line. */
   onConnectCommand?: string | null;
 }
@@ -284,7 +289,8 @@ export interface SessionInfo {
   sessionId: string;
   profileId?: string | null;
   name: string;
-  protocol: Protocol;
+  /** A profile's protocol, or "local" for a shell on this Mac (session:openLocal), which has no profile. */
+  protocol: Protocol | "local";
   host: string;
   username: string;
   /** Empty string for display (rdp) and terminal (mosh) sessions — neither has a filesystem. */
@@ -292,16 +298,31 @@ export interface SessionInfo {
   /** true when this protocol supports an interactive shell (sftp/ssh/mosh). */
   supportsTerminal: boolean;
   /**
-   * "file" (sftp/ftp/ftps/ssh — browse + optional terminal), "display" (rdp —
-   * embedded remote-desktop tab, no file/terminal tabs), or "terminal" (mosh —
-   * the terminal fills the whole tab, no file browsing).
+   * "file" (sftp/ftp/ftps/ssh — browse + optional terminal), "display" (rdp
+   * or vnc — remote-desktop tab, no file/terminal tabs), or "terminal" (mosh
+   * or local — the terminal fills the whole tab, no file browsing).
    */
   kind: "file" | "display" | "terminal";
 }
 
 // session:connect    SessionConnectRequest → SessionInfo
+// session:openLocal  (none)                → SessionInfo   (a shell on this Mac; protocol "local")
 // session:disconnect { sessionId }         → OkResult
 // session:list                             → SessionInfo[]
+// session:x11Status                        → X11Status  (can X11 forwarding reach a local X server?)
+// session:serialPorts                      → string[]   (/dev/cu.* devices for a serial profile, USB adapters first)
+// event session:disconnected (SessionDisconnectedEvent): a connection dropped on its own (not via session:disconnect).
+export interface SessionDisconnectedEvent {
+  sessionId: string;
+  reason: string;
+}
+
+export interface X11Status {
+  xquartzInstalled: boolean;
+  /** The local display X11 channels would go to; null when none is found. */
+  display: string | null;
+}
+
 export interface SessionDisconnectRequest {
   sessionId: string;
 }
@@ -822,6 +843,12 @@ export interface CommandSnippet {
   name: string;
   command: string;
   tags: string[];
+  /**
+   * Set for a recorded macro (shared/macros.ts): played back keystroke by
+   * keystroke instead of typing `command`, which then holds a readable
+   * summary for the list.
+   */
+  macro?: MacroStep[] | null;
   /** epoch ms */
   createdAt: number;
 }
@@ -884,6 +911,301 @@ export interface TerminalExitEvent {
   code: number | null;
 }
 
+// ── Tools: port scan, network scan, folder compare (invoke + events) ──────────
+
+// tools:portScan:start     PortScanStartRequest    → ScanStartResult
+// tools:networkScan:start  NetworkScanStartRequest → ScanStartResult
+// tools:scan:cancel        { scanId }              → OkResult
+// tools:localNetworks                              → LocalNetwork[]
+// tools:folderCompare      FolderCompareRequest    → FolderCompareResult
+// events: tools:portScan:progress (PortScanProgressEvent),
+//         tools:networkScan:progress (NetworkScanProgressEvent),
+//         tools:scan:done (ScanDoneEvent) — exactly one per scan, including after cancel.
+export interface PortScanStartRequest {
+  host: string;
+  /** "22,80,443", "1-1024", or a mix like "22,8000-8100". */
+  ports: string;
+  /** Per-port connect timeout; defaults to 800 ms. */
+  timeoutMs?: number;
+}
+
+export interface NetworkScanStartRequest {
+  /** IPv4 CIDR, e.g. "192.168.1.0/24" — at most /22 (1022 hosts). */
+  cidr: string;
+}
+
+export interface ScanStartResult {
+  scanId: string;
+  /** Ports (port scan) or addresses (network scan) that will be probed. */
+  total: number;
+}
+
+export interface PortScanHit {
+  port: number;
+  /** Well-known service name for the port, when there is one. */
+  service: string | null;
+  latencyMs: number;
+}
+
+/** Batched; `open` holds only hits found since the previous event. */
+export interface PortScanProgressEvent {
+  scanId: string;
+  done: number;
+  total: number;
+  open: PortScanHit[];
+}
+
+export interface NetworkHost {
+  address: string;
+  /** Reverse-DNS name, when the lookup answers quickly. */
+  hostname: string | null;
+  /** Ping round trip; null when the host only answered on TCP (ICMP blocked). */
+  latencyMs: number | null;
+  /** Common ports that accepted a connection. */
+  openPorts: number[];
+}
+
+/** Batched; `hosts` holds only live hosts found since the previous event. */
+export interface NetworkScanProgressEvent {
+  scanId: string;
+  done: number;
+  total: number;
+  hosts: NetworkHost[];
+}
+
+export interface ScanDoneEvent {
+  scanId: string;
+  canceled: boolean;
+  error?: string;
+}
+
+export interface ScanCancelRequest {
+  scanId: string;
+}
+
+/** A local IPv4 interface, offered as the network scanner's default range. */
+export interface LocalNetwork {
+  interfaceName: string;
+  address: string;
+  /** Network address with prefix, e.g. "192.168.1.0/24". */
+  cidr: string;
+}
+
+export interface FolderCompareRequest {
+  left: string;
+  right: string;
+}
+
+export type FolderCompareStatus = "left-only" | "right-only" | "different" | "same";
+
+export interface FolderCompareSide {
+  size: number;
+  /** epoch ms */
+  mtime: number;
+}
+
+export interface FolderCompareEntry {
+  /** posix-relative path from both roots; always a file. */
+  relPath: string;
+  status: FolderCompareStatus;
+  left?: FolderCompareSide;
+  right?: FolderCompareSide;
+}
+
+export interface FolderCompareResult {
+  entries: FolderCompareEntry[];
+  /** true when either side hit the file cap and the comparison is partial. */
+  truncated: boolean;
+}
+
+// ── Tools: Homebrew (invoke + events) ─────────────────────────────────────────
+
+// tools:brew:status                     → BrewStatus
+// tools:brew:installed                  → BrewPackage[]   (brew info --json=v2 --installed)
+// tools:brew:search  { query }          → BrewPackage[]   (formulae and casks, up to 30 with details)
+// tools:brew:start   BrewStartRequest   → { jobId }       (install / upgrade / uninstall)
+// tools:brew:cancel  { jobId }          → OkResult
+// events: tools:brew:output (BrewOutputEvent), then exactly one tools:brew:done (BrewDoneEvent) per job.
+export type BrewKind = "formula" | "cask";
+export type BrewAction = "install" | "upgrade" | "uninstall";
+
+export interface BrewStatus {
+  installed: boolean;
+  path: string | null;
+  version: string | null;
+}
+
+export interface BrewPackage {
+  name: string;
+  kind: BrewKind;
+  description: string;
+  /** null when not installed. */
+  installedVersion: string | null;
+  latestVersion: string | null;
+  outdated: boolean;
+  /** Installed only as another formula's dependency. */
+  dependency: boolean;
+  pinned: boolean;
+}
+
+export interface BrewStartRequest {
+  action: BrewAction;
+  kind: BrewKind;
+  /** Empty with action "upgrade" upgrades everything outdated. */
+  names: string[];
+}
+
+export interface BrewOutputEvent {
+  jobId: string;
+  chunk: string;
+}
+
+export interface BrewDoneEvent {
+  jobId: string;
+  /** brew's exit code; null when it couldn't start or was stopped. */
+  code: number | null;
+  error?: string;
+}
+
+// ── Tools: Cron (invoke) ──────────────────────────────────────────────────────
+
+// tools:cron:read  { target }                    → CronTabResult
+// tools:cron:write { target, text, expected }    → CronTabResult  (refuses if the crontab no longer equals `expected`)
+export type CronTarget = { kind: "local" } | { kind: "session"; sessionId: string };
+
+export interface CronTabResult {
+  /** The crontab exactly as `crontab -l` printed it; "" when the user has none. */
+  text: string;
+  /** The machine's clock from `date '+%Y-%m-%d %H:%M %Z'`, for next-run times; null if unavailable. */
+  clock: string | null;
+  user: string;
+  /** "this Mac" or the session's host. */
+  where: string;
+}
+
+export interface CronWriteRequest {
+  target: CronTarget;
+  text: string;
+  expected: string;
+}
+
+// ── session-file import (invoke) ───────────────────────────────────────────────
+
+// sessionImport:parseIni { path } → SessionIniParseResult
+//   Read-only: lists sessions from a sessions.ini or .mxtsessions file; the
+//   renderer creates the chosen ones through folders:create / connections:create.
+export interface SessionIniParseRequest {
+  path: string;
+}
+
+export interface IniSession {
+  name: string;
+  /** Folder path from SubRep, outermost first; empty for top-level sessions. */
+  folderPath: string[];
+  /** The Nexus protocol this maps to, or null for a session type Nexus can't open. */
+  protocol: "ssh" | "sftp" | "rdp" | "vnc" | null;
+  /** the other client's numeric session type (SSH 0, RDP 4, VNC 5, SFTP 7, …). */
+  typeCode: number;
+  host: string;
+  port: number | null;
+  username: string;
+  /** First SSH gateway, for SSH sessions that use one. */
+  jumpHost: { host: string; port: number | null; username: string } | null;
+}
+
+export interface SessionIniParseResult {
+  sessions: IniSession[];
+}
+
+// ── Local servers (invoke + events) ───────────────────────────────────────────
+
+// servers:list                     → LocalServerStatus[]
+// servers:start LocalServerConfig  → LocalServerStatus
+// servers:stop  { kind }           → LocalServerStatus
+// event servers:status (LocalServerStatus) on every start, stop, failure and log line.
+export type LocalServerKind = "http" | "tftp" | "sftp" | "iperf3";
+
+export interface LocalServerConfig {
+  kind: LocalServerKind;
+  port: number;
+  /** Shared folder; null for iperf3, which serves no files. */
+  rootDir: string | null;
+  /** true: reachable from the local network (0.0.0.0). false: this Mac only (127.0.0.1). */
+  lan: boolean;
+  /** TFTP and SFTP: accept uploads and changes. HTTP is always read-only. */
+  allowWrites: boolean;
+  /** SFTP only. */
+  username?: string;
+  password?: string;
+}
+
+export interface LocalServerStatus {
+  kind: LocalServerKind;
+  running: boolean;
+  /** The running config, with any password removed. */
+  config: LocalServerConfig | null;
+  /** Addresses clients can use, e.g. "192.168.1.20:8000". */
+  addresses: string[];
+  startedAt: number | null;
+  /** Why the last start failed or the server stopped on its own. */
+  error: string | null;
+  /** Most recent activity, newest last. */
+  log: string[];
+}
+
+export interface LocalServerStopRequest {
+  kind: LocalServerKind;
+}
+
+// ── Preferences (invoke + event) ───────────────────────────────────────────────
+// preferences:get                       → AppPreferences   (see shared/preferences.ts)
+// preferences:update { patch }          → AppPreferences   (merged, validated, saved)
+// event preferences:changed (AppPreferences) to every window after each update.
+export interface PreferencesUpdateRequest {
+  patch: PreferencesPatch;
+}
+
+// ── VNC byte channel (invoke + send + events) ─────────────────────────────────
+// noVNC runs in the renderer; the TCP connection (direct, or through the
+// profile's SSH jump host) lives in main. Bytes cross IPC both ways.
+//
+// vnc:open        { sessionId }          → { channelId }   (resolves once connected)
+// vnc:send        { channelId, data }    (ipcRenderer.send, fire-and-forget)
+// vnc:close       { channelId }          → OkResult
+// vnc:credentials { sessionId }          → VncCredentials  (only when the server asks for them)
+// events, to the opening window only: vnc:data (VncDataEvent), vnc:closed (VncClosedEvent)
+export interface VncOpenRequest {
+  sessionId: string;
+}
+export interface VncOpenResult {
+  channelId: string;
+}
+export interface VncSendMessage {
+  channelId: string;
+  data: Uint8Array;
+}
+export interface VncCloseRequest {
+  channelId: string;
+}
+export interface VncDataEvent {
+  channelId: string;
+  data: Uint8Array;
+}
+export interface VncClosedEvent {
+  channelId: string;
+  /** Set when the connection failed rather than being closed by either side. */
+  error?: string;
+}
+/**
+ * The saved login for a VNC session. The one place a stored secret reaches the
+ * renderer: noVNC authenticates client-side (VNC DES or Apple Remote Desktop),
+ * so main can't do it for it. Released per session, on noVNC's request.
+ */
+export interface VncCredentials {
+  username: string;
+  password: string | null;
+}
+
 // ── Channel name constants (single source of truth for both layers) ───────────
 
 export const IPC = {
@@ -905,6 +1227,25 @@ export const IPC = {
     syncNow: "connectionSync:syncNow",
     statusChanged: "connectionSync:statusChanged",
   },
+  tools: {
+    portScanStart: "tools:portScan:start",
+    networkScanStart: "tools:networkScan:start",
+    cancelScan: "tools:scan:cancel",
+    localNetworks: "tools:localNetworks",
+    folderCompare: "tools:folderCompare",
+    portScanProgress: "tools:portScan:progress",
+    networkScanProgress: "tools:networkScan:progress",
+    scanDone: "tools:scan:done",
+    cronRead: "tools:cron:read",
+    cronWrite: "tools:cron:write",
+    brewStatus: "tools:brew:status",
+    brewInstalled: "tools:brew:installed",
+    brewSearch: "tools:brew:search",
+    brewStart: "tools:brew:start",
+    brewCancel: "tools:brew:cancel",
+    brewOutput: "tools:brew:output",
+    brewDone: "tools:brew:done",
+  },
   folders: {
     create: "folders:create",
     rename: "folders:rename",
@@ -912,6 +1253,10 @@ export const IPC = {
   },
   session: {
     connect: "session:connect",
+    openLocal: "session:openLocal",
+    x11Status: "session:x11Status",
+    serialPorts: "session:serialPorts",
+    disconnected: "session:disconnected",
     disconnect: "session:disconnect",
     list: "session:list",
   },
@@ -980,6 +1325,28 @@ export const IPC = {
     status: "display:status",
     trustPrompt: "display:trustPrompt",
     trustDecision: "display:trustDecision",
+  },
+  sessionImport: {
+    parseIni: "sessionImport:parseIni",
+  },
+  vnc: {
+    open: "vnc:open",
+    send: "vnc:send",
+    close: "vnc:close",
+    credentials: "vnc:credentials",
+    data: "vnc:data",
+    closed: "vnc:closed",
+  },
+  preferences: {
+    get: "preferences:get",
+    update: "preferences:update",
+    changed: "preferences:changed",
+  },
+  servers: {
+    list: "servers:list",
+    start: "servers:start",
+    stop: "servers:stop",
+    status: "servers:status",
   },
   sshConfig: {
     list: "sshConfig:list",

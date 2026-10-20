@@ -3,8 +3,42 @@
  * IPC contract types. Import `ipc` for invocations and subscriptions.
  */
 
+import type { AppPreferences } from "@shared/preferences";
 import {
   IPC,
+  type SessionDisconnectedEvent,
+  type PreferencesUpdateRequest,
+  type VncOpenRequest,
+  type VncOpenResult,
+  type VncSendMessage,
+  type VncCloseRequest,
+  type VncCredentials,
+  type VncDataEvent,
+  type VncClosedEvent,
+  type X11Status,
+  type LocalServerConfig,
+  type LocalServerStatus,
+  type LocalServerStopRequest,
+  type SessionIniParseRequest,
+  type SessionIniParseResult,
+  type PortScanStartRequest,
+  type NetworkScanStartRequest,
+  type ScanStartResult,
+  type ScanCancelRequest,
+  type LocalNetwork,
+  type FolderCompareRequest,
+  type FolderCompareResult,
+  type PortScanProgressEvent,
+  type NetworkScanProgressEvent,
+  type ScanDoneEvent,
+  type BrewStatus,
+  type CronTarget,
+  type CronTabResult,
+  type CronWriteRequest,
+  type BrewPackage,
+  type BrewStartRequest,
+  type BrewOutputEvent,
+  type BrewDoneEvent,
   type ConnectionsListResult,
   type ConnectionProfileDTO,
   type ConnectionsGetRequest,
@@ -145,6 +179,11 @@ export const ipc = {
   // Sessions
   session: {
     connect: (req: SessionConnectRequest) => invoke<SessionInfo>(IPC.session.connect, req),
+    openLocal: () => invoke<SessionInfo>(IPC.session.openLocal),
+    x11Status: () => invoke<X11Status>(IPC.session.x11Status),
+    serialPorts: () => invoke<string[]>(IPC.session.serialPorts),
+    onDisconnected: (handler: (payload: SessionDisconnectedEvent) => void) =>
+      on<SessionDisconnectedEvent>(IPC.session.disconnected, handler),
     disconnect: (req: SessionDisconnectRequest) => invoke<OkResult>(IPC.session.disconnect, req),
     list: () => invoke<SessionInfo[]>(IPC.session.list),
   },
@@ -239,6 +278,36 @@ export const ipc = {
       on<PortForwardUpdateEvent>(IPC.portForward.update, handler),
   },
 
+  // VNC viewer byte channels (see workspace/remote-desktop/vnc-channel.ts)
+  vnc: {
+    open: (req: VncOpenRequest) => invoke<VncOpenResult>(IPC.vnc.open, req),
+    send: (msg: VncSendMessage) => window.nexusAPI.ipc.send(IPC.vnc.send, msg),
+    close: (req: VncCloseRequest) => invoke<OkResult>(IPC.vnc.close, req),
+    credentials: (req: VncOpenRequest) => invoke<VncCredentials>(IPC.vnc.credentials, req),
+    onData: (handler: (payload: VncDataEvent) => void) => on<VncDataEvent>(IPC.vnc.data, handler),
+    onClosed: (handler: (payload: VncClosedEvent) => void) => on<VncClosedEvent>(IPC.vnc.closed, handler),
+  },
+
+  // Settings-window preferences (see shared/preferences.ts and lib/preferences.ts)
+  preferences: {
+    get: () => invoke<AppPreferences>(IPC.preferences.get),
+    update: (req: PreferencesUpdateRequest) => invoke<AppPreferences>(IPC.preferences.update, req),
+    onChanged: (handler: (payload: AppPreferences) => void) => on<AppPreferences>(IPC.preferences.changed, handler),
+  },
+
+  // Local servers (Servers sidebar)
+  servers: {
+    list: () => invoke<LocalServerStatus[]>(IPC.servers.list),
+    start: (config: LocalServerConfig) => invoke<LocalServerStatus>(IPC.servers.start, config),
+    stop: (req: LocalServerStopRequest) => invoke<LocalServerStatus>(IPC.servers.stop, req),
+    onStatus: (handler: (payload: LocalServerStatus) => void) => on<LocalServerStatus>(IPC.servers.status, handler),
+  },
+
+  // sessions.ini import
+  sessionImport: {
+    parseIni: (req: SessionIniParseRequest) => invoke<SessionIniParseResult>(IPC.sessionImport.parseIni, req),
+  },
+
   // SSH config import
   sshConfig: {
     list: () => invoke<SshConfigListResult>(IPC.sshConfig.list),
@@ -270,5 +339,28 @@ export const ipc = {
   // in the renderer; see report notes on the deferred terminal-side trigger.
   ai: {
     suggest: (req: AiSuggestRequest) => invoke<AiSuggestResult>(IPC.ai.suggest, req),
+  },
+
+  // Tools tab: scans run in the background and report through the on* events
+  tools: {
+    startPortScan: (req: PortScanStartRequest) => invoke<ScanStartResult>(IPC.tools.portScanStart, req),
+    startNetworkScan: (req: NetworkScanStartRequest) => invoke<ScanStartResult>(IPC.tools.networkScanStart, req),
+    cancelScan: (req: ScanCancelRequest) => invoke<OkResult>(IPC.tools.cancelScan, req),
+    localNetworks: () => invoke<LocalNetwork[]>(IPC.tools.localNetworks),
+    compareFolders: (req: FolderCompareRequest) => invoke<FolderCompareResult>(IPC.tools.folderCompare, req),
+    onPortScanProgress: (handler: (payload: PortScanProgressEvent) => void) =>
+      on<PortScanProgressEvent>(IPC.tools.portScanProgress, handler),
+    onNetworkScanProgress: (handler: (payload: NetworkScanProgressEvent) => void) =>
+      on<NetworkScanProgressEvent>(IPC.tools.networkScanProgress, handler),
+    onScanDone: (handler: (payload: ScanDoneEvent) => void) => on<ScanDoneEvent>(IPC.tools.scanDone, handler),
+    cronRead: (req: { target: CronTarget }) => invoke<CronTabResult>(IPC.tools.cronRead, req),
+    cronWrite: (req: CronWriteRequest) => invoke<CronTabResult>(IPC.tools.cronWrite, req),
+    brewStatus: () => invoke<BrewStatus>(IPC.tools.brewStatus),
+    brewInstalled: () => invoke<BrewPackage[]>(IPC.tools.brewInstalled),
+    brewSearch: (req: { query: string }) => invoke<BrewPackage[]>(IPC.tools.brewSearch, req),
+    brewStart: (req: BrewStartRequest) => invoke<{ jobId: string }>(IPC.tools.brewStart, req),
+    brewCancel: (req: { jobId: string }) => invoke<OkResult>(IPC.tools.brewCancel, req),
+    onBrewOutput: (handler: (payload: BrewOutputEvent) => void) => on<BrewOutputEvent>(IPC.tools.brewOutput, handler),
+    onBrewDone: (handler: (payload: BrewDoneEvent) => void) => on<BrewDoneEvent>(IPC.tools.brewDone, handler),
   },
 } as const;

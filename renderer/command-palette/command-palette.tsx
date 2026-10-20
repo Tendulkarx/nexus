@@ -22,12 +22,18 @@ import {
   PlugIcon,
   PlugZapIcon,
   RefreshCwIcon,
+  SquareTerminalIcon,
 } from "lucide-react";
 import { ipc } from "@renderer/lib/ipc";
+import { getPreferences } from "@renderer/lib/preferences";
+import { eventMatches } from "@shared/shortcuts";
 import { setSession, getSession } from "@renderer/lib/sessions";
 import { addOpenSession, closeOpenSession, setActiveView, useOpenSessions } from "@renderer/lib/open-sessions-store";
 import { NEW_CONNECTION_EVENT, NEW_FOLDER_EVENT, OPEN_PALETTE_EVENT } from "@renderer/lib/menu-events";
 import { toggleTheme } from "@renderer/lib/theme-actions";
+import { openLocalShell } from "@renderer/lib/local-shell";
+import { openTool, parseToolTab, TOOL_IDS, TOOL_INFO } from "@renderer/tools/tool-tabs";
+import { TOOL_ICONS } from "@renderer/tools/tool-view";
 import { Badge, Dialog, Input, Text, toast } from "@renderer/lib/ui";
 import type { ActivityLogEntry, ActivityLogEventType, ConnectionProfileDTO, Protocol } from "@shared/ipc-contract";
 
@@ -40,7 +46,10 @@ function getProtocolColor(protocol: Protocol): BadgeColor {
     case "ftps": return "purple";
     case "ssh": return "orange";
     case "rdp": return "magenta";
+    case "vnc": return "red";
     case "mosh": return "yellow";
+    case "telnet": return "secondary";
+    case "serial": return "primary";
     default: return "secondary";
   }
 }
@@ -51,7 +60,10 @@ const PROTOCOL_LABELS: Record<string, string> = {
   ftps: "FTPS",
   ssh: "SSH",
   rdp: "RDP",
+  vnc: "VNC",
   mosh: "Mosh",
+  telnet: "Telnet",
+  serial: "Serial",
 };
 
 function protocolLabel(protocol: Protocol): string {
@@ -134,7 +146,8 @@ export function CommandPalette() {
 
   React.useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key.toLowerCase() !== "k" || !(e.metaKey || e.ctrlKey)) return;
+      // Settings › Keyboard Shortcuts; capture phase so a focused terminal doesn't swallow it.
+      if (!eventMatches(e, getPreferences().shortcuts.palette)) return;
       e.preventDefault();
       e.stopPropagation();
       setOpen((prev) => !prev);
@@ -152,7 +165,8 @@ export function CommandPalette() {
   const profiles = connectionsQuery.data?.profiles ?? [];
 
   async function connect(profile: ConnectionProfileDTO, secret?: string) {
-    if (!secret && !profile.hasSecret && profile.authType === "password") {
+    // VNC asks in its own viewer, and only if the server wants a login, so it doesn't need one up front.
+    if (!secret && !profile.hasSecret && profile.authType === "password" && profile.protocol !== "vnc") {
       setOpen(false);
       setPasswordPrompt({ profile, password: "" });
       return;
@@ -172,7 +186,7 @@ export function CommandPalette() {
   }
 
   async function disconnectActiveSession() {
-    if (active === "connections") return;
+    if (active === "connections" || parseToolTab(active)) return;
     const sessionId = active;
     try {
       await ipc.session.disconnect({ sessionId });
@@ -202,13 +216,15 @@ export function CommandPalette() {
           <CommandEmpty className="py-8 text-center text-sm text-tertiary">No results found.</CommandEmpty>
 
           {order.length > 0 && (
-            <CommandGroup heading="Open Sessions" className={groupClassName}>
+            <CommandGroup heading="Open Tabs" className={groupClassName}>
               {order.map((sessionId) => {
                 const session = getSession(sessionId);
+                const toolId = parseToolTab(sessionId);
+                const label = toolId ? TOOL_INFO[toolId].name : (session?.name ?? sessionId);
                 return (
                   <CommandItem
                     key={sessionId}
-                    value={`${session?.name ?? sessionId} session`}
+                    value={`${label} ${toolId ? "tool" : "session"}`}
                     className={itemClassName}
                     onSelect={() => {
                       setActiveView(sessionId);
@@ -216,7 +232,7 @@ export function CommandPalette() {
                     }}
                   >
                     <ServerIcon className="size-3.5 shrink-0" />
-                    <span className="flex-1 min-w-0 truncate">{session?.name ?? sessionId}</span>
+                    <span className="flex-1 min-w-0 truncate">{label}</span>
                     {active === sessionId && (
                       <Badge color="secondary" size="small">Current</Badge>
                     )}
@@ -252,7 +268,41 @@ export function CommandPalette() {
 
           <CommandSeparator className="my-1 h-px bg-separator" />
 
+          <CommandGroup heading="Tools" className={groupClassName}>
+            {TOOL_IDS.map((id) => {
+              const Icon = TOOL_ICONS[id];
+              return (
+                <CommandItem
+                  key={id}
+                  value={`${TOOL_INFO[id].name} tool ${TOOL_INFO[id].description}`}
+                  className={itemClassName}
+                  onSelect={() => {
+                    openTool(id);
+                    setOpen(false);
+                  }}
+                >
+                  <Icon className="size-3.5 shrink-0" />
+                  <span className="flex-1 min-w-0 truncate">{TOOL_INFO[id].name}</span>
+                  <span className="text-xs text-tertiary truncate">{TOOL_INFO[id].description}</span>
+                </CommandItem>
+              );
+            })}
+          </CommandGroup>
+
+          <CommandSeparator className="my-1 h-px bg-separator" />
+
           <CommandGroup heading="Actions" className={groupClassName}>
+            <CommandItem
+              value="New Local Shell"
+              className={itemClassName}
+              onSelect={() => {
+                setOpen(false);
+                void openLocalShell();
+              }}
+            >
+              <SquareTerminalIcon className="size-3.5 shrink-0" />
+              New Local Shell
+            </CommandItem>
             <CommandItem
               value="New Connection"
               className={itemClassName}

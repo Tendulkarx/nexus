@@ -95,6 +95,7 @@ export class ConnectionStore {
       secret: input.secret ? await credentialVault.encrypt(input.secret) : null,
       jumpHost: input.jumpHost ? await this.buildJumpHost(input.jumpHost) : null,
       agentForward: input.agentForward ?? false,
+      x11Forward: input.x11Forward ?? false,
       onConnectCommand: input.onConnectCommand ?? null,
     };
     data.profiles.push(profile);
@@ -119,6 +120,7 @@ export class ConnectionStore {
     if (patch.defaultRemotePath !== undefined) profile.defaultRemotePath = patch.defaultRemotePath;
     if (patch.color !== undefined) profile.color = patch.color;
     if (patch.agentForward !== undefined) profile.agentForward = patch.agentForward;
+    if (patch.x11Forward !== undefined) profile.x11Forward = patch.x11Forward;
     if (patch.onConnectCommand !== undefined) profile.onConnectCommand = patch.onConnectCommand;
     // Only re-encrypt when a non-empty secret is supplied; undefined leaves it unchanged.
     if (patch.secret !== undefined && patch.secret !== null && patch.secret !== "") {

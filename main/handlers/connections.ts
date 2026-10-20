@@ -13,7 +13,20 @@ import { exportConnections, importConnections } from "../services/connection-tra
 import { IPC } from "../../renderer/shared/ipc-contract.js";
 import type { AuthType, ConnectionInput, JumpHostInput, Protocol } from "@shared/ipc-contract";
 
-const PROTOCOLS: Protocol[] = ["sftp", "ftp", "ftps", "ssh", "rdp", "mosh"];
+// Keyed by Protocol so adding one to the union fails type-checking here until it's accepted too.
+const PROTOCOL_SET: Record<Protocol, true> = {
+  sftp: true,
+  ftp: true,
+  ftps: true,
+  ssh: true,
+  rdp: true,
+  vnc: true,
+  mosh: true,
+  telnet: true,
+  serial: true,
+};
+const PROTOCOLS = Object.keys(PROTOCOL_SET) as Protocol[];
+const SSH_BASED: Protocol[] = ["ssh", "sftp", "mosh"];
 const AUTH_TYPES: AuthType[] = ["password", "key"];
 
 function coerceJumpHost(value: unknown, context: string): JumpHostInput {
@@ -49,7 +62,8 @@ function coerceInput(value: unknown, context: string): ConnectionInput {
     protocol,
     host: reqString(obj, "host", context),
     port,
-    username: reqString(obj, "username", context),
+    // SSH needs a user; RDP, VNC and FTP servers may not (the form allows it blank for them).
+    username: SSH_BASED.includes(protocol) ? reqString(obj, "username", context) : (optString(obj, "username") ?? ""),
     authType,
     privateKeyPath: optString(obj, "privateKeyPath") ?? null,
     folderId: optString(obj, "folderId") ?? null,
@@ -59,6 +73,7 @@ function coerceInput(value: unknown, context: string): ConnectionInput {
     secret: optString(obj, "secret") ?? undefined,
     jumpHost: obj.jumpHost ? coerceJumpHost(obj.jumpHost, `${context}.jumpHost`) : null,
     agentForward: obj.agentForward === true,
+    x11Forward: obj.x11Forward === true,
     onConnectCommand: optString(obj, "onConnectCommand") ?? null,
   };
 }
@@ -76,8 +91,7 @@ function coercePatch(value: unknown, context: string): Partial<ConnectionInput> 
     patch.authType = obj.authType as AuthType;
   if ("privateKeyPath" in obj) patch.privateKeyPath = optString(obj, "privateKeyPath") ?? null;
   if ("folderId" in obj) patch.folderId = optString(obj, "folderId") ?? null;
-  if (Array.isArray(obj.tags))
-    patch.tags = obj.tags.filter((t): t is string => typeof t === "string");
+  if (Array.isArray(obj.tags)) patch.tags = obj.tags.filter((t): t is string => typeof t === "string");
   if ("defaultRemotePath" in obj) patch.defaultRemotePath = optString(obj, "defaultRemotePath") ?? null;
   if ("color" in obj) patch.color = optString(obj, "color") ?? null;
   if (typeof obj.secret === "string") patch.secret = obj.secret;
@@ -85,6 +99,7 @@ function coercePatch(value: unknown, context: string): Partial<ConnectionInput> 
     patch.jumpHost = obj.jumpHost === null ? null : coerceJumpHost(obj.jumpHost, `${context}.jumpHost`);
   }
   if (typeof obj.agentForward === "boolean") patch.agentForward = obj.agentForward;
+  if (typeof obj.x11Forward === "boolean") patch.x11Forward = obj.x11Forward;
   if ("onConnectCommand" in obj) patch.onConnectCommand = optString(obj, "onConnectCommand") ?? null;
   return patch;
 }

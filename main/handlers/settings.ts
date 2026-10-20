@@ -7,6 +7,7 @@ import { ipcMain } from "electron";
 import { asRecord, reqString } from "./validate.js";
 import { suggestCommand } from "../services/ai-completion-service.js";
 import { appSettingsStore } from "../services/app-settings-store.js";
+import { emitToRenderer } from "../services/ipc-emitter.js";
 
 import { IPC } from "../../renderer/shared/ipc-contract.js";
 import type { AiSuggestConfig, AiSuggestConfigInput, AiSuggestResult } from "@shared/ipc-contract";
@@ -26,6 +27,16 @@ export function registerSettingsHandlers(): void {
       apiKey: configObj.apiKey === undefined ? undefined : (configObj.apiKey as string | null),
     };
     return appSettingsStore.setAiSuggestConfig(config);
+  });
+
+  ipcMain.handle(IPC.preferences.get, async () => appSettingsStore.getPreferences());
+
+  ipcMain.handle(IPC.preferences.update, async (_e, payload: unknown) => {
+    const obj = asRecord(payload, "preferences:update");
+    // Validation happens in applyPreferencesPatch: anything malformed falls back to the current value.
+    const next = await appSettingsStore.updatePreferences(obj.patch);
+    emitToRenderer(IPC.preferences.changed, next);
+    return next;
   });
 
   ipcMain.handle(IPC.settings.getNotificationsEnabled, async (): Promise<boolean> => {

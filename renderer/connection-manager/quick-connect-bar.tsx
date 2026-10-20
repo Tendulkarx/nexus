@@ -14,7 +14,10 @@ const DEFAULT_PORTS: Record<Protocol, number> = {
   ftps: 990,
   ssh: 22,
   rdp: 3389,
+  vnc: 5900,
   mosh: 22,
+  telnet: 23,
+  serial: 115200,
 };
 
 export function QuickConnectBar({ onConnect }: QuickConnectBarProps) {
@@ -75,6 +78,7 @@ export function QuickConnectBar({ onConnect }: QuickConnectBarProps) {
           <SelectItem value="ftps">FTPS</SelectItem>
           <SelectItem value="ssh">SSH</SelectItem>
           <SelectItem value="mosh">Mosh</SelectItem>
+          <SelectItem value="telnet">Telnet</SelectItem>
         </SelectContent>
       </Select>
 

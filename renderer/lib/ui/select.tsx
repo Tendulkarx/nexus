@@ -2,6 +2,7 @@ import * as React from "react";
 import { Select as Rx } from "radix-ui";
 import { CheckIcon, ChevronDownIcon } from "lucide-react";
 import { cn } from "../cn";
+import { useFieldControlId } from "./field-context";
 
 export const Select = Rx.Root;
 
@@ -11,9 +12,10 @@ interface SelectTriggerProps extends React.ComponentPropsWithoutRef<typeof Rx.Tr
 }
 
 export const SelectTrigger = React.forwardRef<HTMLButtonElement, SelectTriggerProps>(
-  ({ variant = "default", size = "default", className, children, ...props }, ref) => (
+  ({ variant = "default", size = "default", className, children, id, ...props }, ref) => (
     <Rx.Trigger
       ref={ref}
+      id={useFieldControlId(id)}
       className={cn(
         "inline-flex items-center justify-between gap-1.5 rounded-medium border border-field bg-transparent outline-none",
         "focus:border-accent focus:ring-1 focus:ring-accent/40",

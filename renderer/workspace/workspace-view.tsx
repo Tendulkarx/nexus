@@ -1,17 +1,26 @@
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button, PanelGroup, Panel, Text, toast } from "@renderer/lib/ui";
-import { TerminalIcon, ArrowDownToLineIcon, NetworkIcon, ExternalLinkIcon } from "lucide-react";
-import { getSession } from "@renderer/lib/sessions";
-import { closeOpenSession } from "@renderer/lib/open-sessions-store";
+import { TerminalIcon, FolderIcon, ArrowDownToLineIcon, NetworkIcon, ExternalLinkIcon } from "lucide-react";
+import { cn } from "@renderer/lib/cn";
+import { getSession, removeSession } from "@renderer/lib/sessions";
+import { clearSessionStatus, useSessionStatus } from "@renderer/lib/session-status";
+import { CONNECT_PROFILE_EVENT, type ConnectProfileEventDetail } from "@renderer/lib/menu-events";
+import { SessionDot } from "@renderer/main/shell/session-dot";
+import { closeOpenSession, useOpenSessions } from "@renderer/lib/open-sessions-store";
+import { useFilesSidebarSlot } from "@renderer/lib/files-sidebar-slot";
+import { getPreferences } from "@renderer/lib/preferences";
 import { ipc } from "@renderer/lib/ipc";
 import { useTransfers } from "@renderer/lib/use-transfers";
-import { usePersistedState } from "@renderer/lib/hooks";
 import { DualPaneView } from "./files/dual-pane-view";
+import { RemoteFilesPanel } from "./files/remote-files-panel";
 import { TerminalTabs } from "./terminal/terminal-tabs";
 import { TransferQueuePanel } from "./transfer-queue/transfer-queue-panel";
 import { RemoteDesktopPane } from "./remote-desktop/remote-desktop-pane";
+import { VncPane } from "./remote-desktop/vnc-pane";
 import { PortForwardPanel } from "./port-forwards/port-forward-panel";
+import type { SessionInfo } from "@shared/ipc-contract";
 
 interface WorkspaceViewProps {
   sessionId: string;
@@ -24,26 +33,53 @@ interface WorkspaceViewProps {
   onPopOut?: () => void;
 }
 
-// Dockable side/bottom panels toggled from the session bar. An array (not a
-// couple of hardcoded booleans) so a future panel — snippets, an activity
-// log — only needs a new id here plus a slot in the JSX below.
-type DockPanelId = "terminal" | "forwards";
+/** What fills a file session's tab: its terminal, or the dual-pane file browser. */
+type MainView = "terminal" | "files";
 
-const OPEN_PANELS_STORAGE_KEY = "nexus:workspace-open-panels";
+/** SSH profiles open on Settings › Sessions' choice (terminal by default); SFTP/FTP (and anything without a shell) open on files. */
+function defaultMainView(session: Pick<SessionInfo, "protocol" | "supportsTerminal">): MainView {
+  if (!session.supportsTerminal || session.protocol !== "ssh") return "files";
+  return getPreferences().sessions.sshOpensOn;
+}
 
 export function WorkspaceView({ sessionId, onPopOut }: WorkspaceViewProps) {
   const qc = useQueryClient();
   const session = getSession(sessionId);
+  // In the main window the shell provides the Files and Tunnels sidebars; a
+  // popped-out window has neither, so it keeps the in-tab port forwards panel.
+  const inShell = onPopOut !== undefined;
 
-  const [openPanels, setOpenPanels] = usePersistedState<DockPanelId[]>(OPEN_PANELS_STORAGE_KEY, []);
+  const [mainView, setMainView] = React.useState<MainView>(() => (session ? defaultMainView(session) : "files"));
+  // The terminal mounts the first time it's shown and then stays mounted, so
+  // switching views never kills the shell, and SFTP-first sessions don't open
+  // one nobody asked for.
+  const [terminalMounted, setTerminalMounted] = React.useState(mainView === "terminal");
+  const [showForwards, setShowForwards] = React.useState(false);
   const [showTransfers, setShowTransfers] = React.useState(false);
 
   const transferState = useTransfers();
-
   const activeCount = transferState.active.length;
 
-  function togglePanel(id: DockPanelId) {
-    setOpenPanels(openPanels.includes(id) ? openPanels.filter((p) => p !== id) : [...openPanels, id]);
+  const filesSlot = useFilesSidebarSlot();
+  const { active } = useOpenSessions();
+
+  const status = useSessionStatus(sessionId);
+
+  /** Opens a fresh session from the same profile (the connect flow handles prompts), then closes this dead tab. */
+  function reconnect() {
+    if (!session?.profileId) return;
+    window.dispatchEvent(
+      new CustomEvent<ConnectProfileEventDetail>(CONNECT_PROFILE_EVENT, { detail: { profileId: session.profileId } }),
+    );
+    void ipc.session.disconnect({ sessionId }).catch(() => {});
+    removeSession(sessionId);
+    clearSessionStatus(sessionId);
+    closeOpenSession(sessionId);
+  }
+
+  function showView(view: MainView) {
+    setMainView(view);
+    if (view === "terminal") setTerminalMounted(true);
   }
 
   // Toast + refresh when an externally-edited file is saved back to the server.
@@ -75,108 +111,128 @@ export function WorkspaceView({ sessionId, onPopOut }: WorkspaceViewProps) {
     );
   }
 
-  const terminalOpen = session.supportsTerminal && openPanels.includes("terminal");
-  const forwardsOpen = session.supportsTerminal && openPanels.includes("forwards");
+  const canSwitch = session.kind === "file" && session.supportsTerminal;
+  const forwardsOpen = !inShell && canSwitch && showForwards;
 
   return (
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between gap-2 border-b border-separator pl-4 pr-3 py-1.5 shrink-0">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="size-2 rounded-full bg-support-green shrink-0" title="Connected" />
+          <SessionDot sessionId={session.sessionId} className="size-2" />
           <span className="text-sm font-semibold text-primary truncate">{session.name}</span>
           <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-accent/15 text-accent">
             {session.protocol}
           </span>
           <span className="text-xs text-secondary truncate">
-            {session.username}@{session.host}
+            {session.username ? `${session.username}@` : ""}
+            {session.host}
           </span>
         </div>
 
-        {(session.kind === "file" || onPopOut) && (
-          <div className="flex items-center gap-1 shrink-0">
-            {session.kind === "file" && session.supportsTerminal && (
-              <Button
-                variant={terminalOpen ? "filled" : "transparent"}
-                size="small"
-                iconOnly
-                onClick={() => togglePanel("terminal")}
-                aria-label="Toggle terminal panel"
-              >
-                <TerminalIcon className="size-3.5" />
-              </Button>
-            )}
-            {session.kind === "file" && session.supportsTerminal && (
-              <Button
-                variant={forwardsOpen ? "filled" : "transparent"}
-                size="small"
-                iconOnly
-                onClick={() => togglePanel("forwards")}
-                aria-label="Toggle port forwards panel"
-              >
-                <NetworkIcon className="size-3.5" />
-              </Button>
-            )}
-            {session.kind === "file" && (
-              <Button
-                variant="transparent"
-                size="small"
-                iconOnly
-                onClick={() => setShowTransfers((v) => !v)}
-                aria-label="Toggle transfer queue"
-              >
-                <div className="relative">
-                  <ArrowDownToLineIcon className="size-3.5" />
-                  {activeCount > 0 && (
-                    <span className="absolute -top-1 -right-1 size-1.5 rounded-full bg-accent" />
+        <div className="flex items-center gap-1 shrink-0">
+          {canSwitch && (
+            <div
+              role="radiogroup"
+              aria-label="Show"
+              className="flex items-center rounded-medium bg-control-subtle p-0.5 mr-1"
+            >
+              {(
+                [
+                  { view: "terminal", label: "Terminal", icon: TerminalIcon },
+                  { view: "files", label: "Files", icon: FolderIcon },
+                ] as const
+              ).map(({ view, label, icon: Icon }) => (
+                <button
+                  key={view}
+                  type="button"
+                  role="radio"
+                  aria-checked={mainView === view}
+                  onClick={() => showView(view)}
+                  className={cn(
+                    "flex items-center gap-1.5 h-6 px-2.5 rounded-[6px] text-xs transition-colors",
+                    mainView === view ? "bg-[var(--bg)] text-primary shadow-sm" : "text-secondary hover:text-primary",
                   )}
-                </div>
-              </Button>
-            )}
-            {onPopOut && (
-              <Button
-                variant="transparent"
-                size="small"
-                iconOnly
-                onClick={onPopOut}
-                aria-label="Open in new window"
-              >
-                <ExternalLinkIcon className="size-3.5" />
-              </Button>
-            )}
-          </div>
-        )}
+                >
+                  <Icon className="size-3.5" aria-hidden="true" />
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+          {!inShell && canSwitch && (
+            <Button
+              variant={forwardsOpen ? "filled" : "transparent"}
+              size="small"
+              iconOnly
+              onClick={() => setShowForwards((v) => !v)}
+              aria-label="Toggle port forwards panel"
+            >
+              <NetworkIcon className="size-3.5" />
+            </Button>
+          )}
+          {session.kind === "file" && (
+            <Button
+              variant="transparent"
+              size="small"
+              iconOnly
+              onClick={() => setShowTransfers((v) => !v)}
+              aria-label="Toggle transfer queue"
+            >
+              <div className="relative">
+                <ArrowDownToLineIcon className="size-3.5" />
+                {activeCount > 0 && <span className="absolute -top-1 -right-1 size-1.5 rounded-full bg-accent" />}
+              </div>
+            </Button>
+          )}
+          {onPopOut && (
+            <Button variant="transparent" size="small" iconOnly onClick={onPopOut} aria-label="Open in new window">
+              <ExternalLinkIcon className="size-3.5" />
+            </Button>
+          )}
+        </div>
       </div>
+
+      {status.state === "disconnected" && session.kind !== "display" && (
+        <div className="flex flex-wrap items-center gap-3 px-4 py-2 border-b border-separator bg-support-red/10 text-sm shrink-0">
+          <span className="flex-1 min-w-0 text-primary">
+            Disconnected{status.detail ? `: ${status.detail}` : ""}. The terminal and file views below are no longer
+            live.
+          </span>
+          {session.profileId && (
+            <Button variant="accent" size="small" onClick={reconnect}>
+              Reconnect
+            </Button>
+          )}
+        </div>
+      )}
 
       {session.kind === "display" ? (
         // Remote Desktop (rdp) — no file browsing/terminal/transfers, just
         // the embedded native remote-desktop view filling the rest of the tab.
         <div className="flex-1 min-h-0">
-          <RemoteDesktopPane session={session} />
+          {session.protocol === "vnc" ? <VncPane session={session} /> : <RemoteDesktopPane session={session} />}
         </div>
       ) : session.kind === "terminal" ? (
-        // Mosh — terminal-only, no filesystem, so the terminal fills the
-        // whole tab instead of living in a dockable bottom panel.
+        // Mosh and local shells — terminal-only, no filesystem.
         <div className="flex-1 min-h-0">
           <TerminalTabs session={session} isVisible={true} />
         </div>
       ) : (
         <>
-          <PanelGroup storageKey="workspace-vertical" direction="vertical" className="flex-1 min-h-0">
-            <Panel id="workspace-main" className="min-h-0">
-              <PanelGroup storageKey="workspace-horizontal" className="h-full">
-                <Panel id="workspace-files" className="h-full">
-                  <DualPaneView session={session} transferState={transferState} />
-                </Panel>
-                {forwardsOpen && (
-                  <Panel id="workspace-forwards" defaultSize={26} minSize={220} className="h-full">
-                    <PortForwardPanel sessionId={session.sessionId} />
-                  </Panel>
-                )}
-              </PanelGroup>
+          <PanelGroup storageKey="workspace-horizontal" className="flex-1 min-h-0">
+            <Panel id="workspace-main" className="h-full relative">
+              {terminalMounted && (
+                <div className={cn("absolute inset-0", mainView !== "terminal" && "hidden")}>
+                  <TerminalTabs session={session} isVisible={mainView === "terminal"} />
+                </div>
+              )}
+              <div className={cn("absolute inset-0", mainView !== "files" && "hidden")}>
+                <DualPaneView session={session} transferState={transferState} />
+              </div>
             </Panel>
-            {terminalOpen && (
-              <Panel id="workspace-terminal" defaultSize={35} minSize={120} className="min-h-0">
-                <TerminalTabs session={session} isVisible={terminalOpen} />
+            {forwardsOpen && (
+              <Panel id="workspace-forwards" defaultSize={26} minSize={220} className="h-full">
+                <PortForwardPanel sessionId={session.sessionId} />
               </Panel>
             )}
           </PanelGroup>
@@ -188,6 +244,15 @@ export function WorkspaceView({ sessionId, onPopOut }: WorkspaceViewProps) {
               onClose={() => setShowTransfers(false)}
             />
           )}
+
+          {/* The shell's Files sidebar, showing this session's browser only while its tab is active. */}
+          {filesSlot &&
+            createPortal(
+              <div className={cn("h-full", active !== sessionId && "hidden")}>
+                <RemoteFilesPanel session={session} transferState={transferState} />
+              </div>,
+              filesSlot,
+            )}
         </>
       )}
     </div>

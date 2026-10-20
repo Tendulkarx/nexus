@@ -34,6 +34,10 @@ declare module "ssh2-sftp-client" {
     /** Underlying ssh2 client — used to open an interactive shell channel. */
     client: SSH2Client;
     connect(config: ConnectConfig): Promise<unknown>;
+    /** First half of connect(): the SSH connection and sign-in, without opening the SFTP subsystem. */
+    getConnection(config: ConnectConfig): Promise<unknown>;
+    /** Second half of connect(): opens the SFTP subsystem on a connection from getConnection(). */
+    getSftpChannel(): Promise<unknown>;
     list(remotePath: string): Promise<FileInfo[]>;
     exists(remotePath: string): Promise<false | "d" | "-" | "l">;
     stat(remotePath: string): Promise<{ size: number; isDirectory: boolean; isFile: boolean }>;

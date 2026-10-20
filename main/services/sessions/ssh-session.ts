@@ -11,6 +11,8 @@ import SftpClient from "ssh2-sftp-client";
 import { BaseSession, TransferCanceledError, type ProgressCallback } from "./base-session.js";
 import { connectViaJumpHost, verifyHostKey } from "./ssh-connect.js";
 import { logger } from "../../logger.js";
+import { appSettingsStore } from "../app-settings-store.js";
+import { attachX11Forwarding, cookieFor, findLocalDisplay, parseDisplay, type X11Forwarding } from "../x11.js";
 
 import type { ConnectionProfile } from "@shared/ipc-contract";
 import type { DirListing, FsEntry, SessionInfo } from "@shared/ipc-contract";
@@ -32,6 +34,9 @@ export class SshSession extends BaseSession {
   private closing = false;
   private unexpectedCloseHandler: ((reason: string) => void) | null = null;
 
+  /** Set when the profile asked for X11 and a local X server (XQuartz) was found at connect time. */
+  private x11: X11Forwarding | null = null;
+
   private constructor(
     sftp: SftpClient,
     info: SessionInfo,
@@ -43,6 +48,20 @@ export class SshSession extends BaseSession {
     this.info = info;
     this.onConnectCommand = onConnectCommand;
     this.jumpClient = jumpClient;
+  }
+
+  /** Wires X11 forwarding to the local display, or logs why it can't (no XQuartz) and carries on without it. */
+  private async enableX11(): Promise<void> {
+    const display = await findLocalDisplay();
+    const target = display ? parseDisplay(display) : null;
+    if (!display || !target) {
+      logger.warn("ssh", "X11 forwarding requested but no local X server (XQuartz) was found", { host: this.info.host });
+      return;
+    }
+    this.x11 = attachX11Forwarding(this.sftp.client, target, await cookieFor(display), (message) =>
+      logger.warn("ssh", message, { host: this.info.host }),
+    );
+    logger.info("ssh", "X11 forwarding enabled", { host: this.info.host, display });
   }
 
   /** Called by SessionManager to learn when the underlying connection drops on its own (network loss, server restart, etc.) rather than via close(). */
@@ -69,7 +88,8 @@ export class SshSession extends BaseSession {
       port,
       username: profile.username,
       readyTimeout: 20_000,
-      keepaliveInterval: 15_000,
+      // Settings › Sessions; 0 turns keepalives off.
+      keepaliveInterval: (await appSettingsStore.getPreferences()).sessions.keepaliveSeconds * 1000,
       hostVerifier: (key: Buffer, verify: (ok: boolean) => void) => {
         verifyHostKey(host, port, key)
           .then(verify)
@@ -107,13 +127,32 @@ export class SshSession extends BaseSession {
       config.sock = jump.sock;
     }
 
-    try {
-      await sftp.connect(config);
-    } catch (err) {
+    // connect() in two halves so an SSH profile still gets its terminal when the
+    // server has the SFTP subsystem turned off (Subsystem sftp commented out,
+    // or a restricted shell): the session then reports kind "terminal".
+    const abandon = () => {
+      sftp.client.end();
       jumpClient?.end();
+    };
+    try {
+      await sftp.getConnection(config);
+    } catch (err) {
+      abandon();
       throw err;
     }
-    const homeDir = await sftp.cwd();
+    let hasFiles = true;
+    try {
+      await sftp.getSftpChannel();
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      if (profile.protocol !== "ssh") {
+        abandon();
+        throw new Error(`${host} signed you in but doesn't offer SFTP (${reason}). Use an SSH connection for its terminal.`);
+      }
+      hasFiles = false;
+      logger.warn("ssh", "SFTP subsystem unavailable; opening terminal only", { host, reason });
+    }
+    const homeDir = hasFiles ? await sftp.cwd() : "";
 
     const info: SessionInfo = {
       sessionId,
@@ -124,9 +163,10 @@ export class SshSession extends BaseSession {
       username: profile.username,
       homeDir: homeDir || ".",
       supportsTerminal: true,
-      kind: "file",
+      kind: hasFiles ? "file" : "terminal",
     };
     const session = new SshSession(sftp, info, profile.onConnectCommand ?? null, jumpClient);
+    if (profile.x11Forward) await session.enableX11();
     sftp.client.on("close", () => session.handleUnderlyingClose("Connection closed"));
     sftp.client.on("error", (err: Error) => session.handleUnderlyingClose(err.message));
     return session;
@@ -232,7 +272,12 @@ export class SshSession extends BaseSession {
    * (e.g. remote search's `grep -r`) and collects its output. Does not throw
    * on a non-zero exit code — callers decide what that means for their command.
    */
-  exec(command: string, timeoutMs = 20_000): Promise<{ stdout: string; stderr: string; code: number | null }> {
+  exec(
+    command: string,
+    timeoutMs = 20_000,
+    /** Written to the command's stdin, which is then closed (e.g. `crontab -`). */
+    input?: string,
+  ): Promise<{ stdout: string; stderr: string; code: number | null }> {
     return new Promise((resolve, reject) => {
       this.sftp.client.exec(command, (err, stream) => {
         if (err) {
@@ -259,6 +304,7 @@ export class SshSession extends BaseSession {
           clearTimeout(timer);
           resolve({ stdout, stderr, code });
         });
+        if (input !== undefined) stream.end(input);
       });
     });
   }
@@ -268,6 +314,7 @@ export class SshSession extends BaseSession {
     return new Promise((resolve, reject) => {
       this.sftp.client.shell(
         { term: "xterm-256color", cols, rows },
+        this.x11 ? { x11: this.x11.shellOption } : {},
         (err: Error | undefined, channel: ClientChannel) => {
           if (err) reject(err);
           else resolve(channel);
@@ -320,7 +367,9 @@ export class SshSession extends BaseSession {
   async close(): Promise<void> {
     this.closing = true;
     try {
-      await this.sftp.end();
+      // end() is a no-op without an SFTP channel, so a terminal-only session ends its connection directly.
+      if (this.info.kind === "file") await this.sftp.end();
+      else this.sftp.client.end();
     } catch {
       // Best-effort teardown.
     }

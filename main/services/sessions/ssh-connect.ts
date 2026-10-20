@@ -10,6 +10,7 @@ import { Client } from "ssh2";
 
 import { fingerprintKey, knownHostsStore } from "../known-hosts-store.js";
 import { logger } from "../../logger.js";
+import { appSettingsStore } from "../app-settings-store.js";
 
 import type { JumpHost } from "@shared/ipc-contract";
 import type { ClientChannel, ConnectConfig } from "ssh2";
@@ -77,7 +78,8 @@ export async function connectViaJumpHost(
     port: jumpPort,
     username: jump.username,
     readyTimeout: 20_000,
-    keepaliveInterval: 15_000,
+    // Settings › Sessions; 0 turns keepalives off.
+    keepaliveInterval: (await appSettingsStore.getPreferences()).sessions.keepaliveSeconds * 1000,
     hostVerifier: (key: Buffer, verify: (ok: boolean) => void) => {
       verifyHostKey(jumpHostAddr, jumpPort, key)
         .then(verify)

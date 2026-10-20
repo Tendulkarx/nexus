@@ -32,7 +32,17 @@ export function broadcastTargets(group: ReadonlySet<string>, terminalId: string)
   return group.has(terminalId) ? Array.from(group) : [terminalId];
 }
 
+/**
+ * The title-bar multi-exec switch: if anything is broadcasting, stop all of
+ * it; otherwise put every live terminal in the group.
+ */
+export function toggleAll(group: ReadonlySet<string>, live: ReadonlySet<string>): Set<string> {
+  return group.size > 0 ? new Set() : new Set(live);
+}
+
 let group = new Set<string>();
+/** Terminals with a running backend shell, so the title-bar switch knows what "all" means. */
+let live = new Set<string>();
 const listeners = new Set<() => void>();
 
 // Warn once per app run the first time broadcast is enabled, not on every join.
@@ -59,6 +69,29 @@ export function joinBroadcastGroup(terminalId: string): void {
 export function leaveBroadcastGroup(terminalId: string): void {
   group = leaveGroup(group, terminalId);
   emit();
+}
+
+export function registerTerminal(terminalId: string): void {
+  live = new Set(live).add(terminalId);
+  emit();
+}
+
+/** Called when a terminal closes or exits; it also stops broadcasting. */
+export function unregisterTerminal(terminalId: string): void {
+  if (!live.has(terminalId) && !group.has(terminalId)) return;
+  live = new Set(live);
+  live.delete(terminalId);
+  group = leaveGroup(group, terminalId);
+  emit();
+}
+
+export function toggleAllBroadcasting(): void {
+  group = toggleAll(group, live);
+  emit();
+}
+
+export function useLiveTerminalCount(): number {
+  return React.useSyncExternalStore(subscribe, () => live.size);
 }
 
 export function getBroadcastTargets(terminalId: string): string[] {

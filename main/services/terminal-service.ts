@@ -1,6 +1,7 @@
 /**
- * Manages interactive shell channels — SSH shells (SshSession) and mosh
- * sessions (MoshSession) share this service, since both hand back the same
+ * Manages interactive shell channels — SSH shells (SshSession), mosh
+ * sessions (MoshSession) and local shells (LocalShellSession) share this
+ * service, since all hand back the same
  * TerminalChannel duck type from their openShell() method (see
  * sessions/terminal-channel.ts). Server output is coalesced over a short
  * interval before being emitted to the renderer to avoid per-byte IPC.
@@ -11,18 +12,23 @@ import { logger } from "../logger.js";
 
 import { emitToRenderer } from "./ipc-emitter.js";
 import { sessionManager } from "./session-manager.js";
-import { OSC7_SHELL_INTEGRATION_SNIPPET } from "./shell-integration.js";
+import { OSC7_SHELL_INTEGRATION_SNIPPET, stripInjectedEcho } from "./shell-integration.js";
 
 import { IPC } from "../../renderer/shared/ipc-contract.js";
 import type { TerminalDataEvent, TerminalExitEvent } from "@shared/ipc-contract";
 import type { TerminalChannel } from "./sessions/terminal-channel.js";
 
 const FLUSH_INTERVAL_MS = 16;
+/** Longest the first output waits for the shell hook's marker (a shell that can't run it never sends one). */
+const HOOK_HOLD_MS = 3000;
 
 interface Terminal {
   channel: TerminalChannel;
   buffer: string[];
   flushTimer: NodeJS.Timeout | null;
+  /** Output held back while the injected hook is echoed and run; null once released. */
+  held: string | null;
+  holdTimer: NodeJS.Timeout | null;
 }
 
 export class TerminalService {
@@ -32,7 +38,7 @@ export class TerminalService {
     const session = sessionManager.getTerminal(sessionId);
     const channel = await session.openShell(cols, rows);
     const terminalId = randomUUID();
-    const term: Terminal = { channel, buffer: [], flushTimer: null };
+    const term: Terminal = { channel, buffer: [], flushTimer: null, held: null, holdTimer: null };
     this.terminals.set(terminalId, term);
 
     const onData = (data: Buffer | string) => this.enqueue(terminalId, data.toString());
@@ -45,7 +51,11 @@ export class TerminalService {
     // Set up OSC 7 cwd reporting before any user onConnectCommand, so a `cd`
     // inside that command is picked up too — both run unconditionally, the
     // hook isn't an opt-in setting.
-    this.writeCommandLines(channel, OSC7_SHELL_INTEGRATION_SNIPPET);
+    if (session.injectShellIntegration !== false) {
+      term.held = "";
+      term.holdTimer = setTimeout(() => this.release(terminalId, term.held ?? ""), HOOK_HOLD_MS);
+      channel.write(`${OSC7_SHELL_INTEGRATION_SNIPPET}\n`);
+    }
     if (session.onConnectCommand) {
       this.writeCommandLines(channel, session.onConnectCommand);
     }
@@ -63,6 +73,12 @@ export class TerminalService {
   private enqueue(terminalId: string, chunk: string): void {
     const term = this.terminals.get(terminalId);
     if (!term) return;
+    if (term.held !== null) {
+      term.held += chunk;
+      const cleaned = stripInjectedEcho(term.held);
+      if (cleaned !== null) this.release(terminalId, cleaned);
+      return;
+    }
     term.buffer.push(chunk);
     if (term.flushTimer) return;
     term.flushTimer = setTimeout(() => this.flush(terminalId), FLUSH_INTERVAL_MS);
@@ -76,6 +92,16 @@ export class TerminalService {
     const chunk = term.buffer.join("");
     term.buffer = [];
     emitToRenderer(IPC.terminal.data, { terminalId, chunk } satisfies TerminalDataEvent);
+  }
+
+  /** Ends the hold on a terminal's first output, sending `text` in its place. */
+  private release(terminalId: string, text: string): void {
+    const term = this.terminals.get(terminalId);
+    if (!term || term.held === null) return;
+    if (term.holdTimer) clearTimeout(term.holdTimer);
+    term.held = null;
+    term.holdTimer = null;
+    if (text) this.enqueue(terminalId, text);
   }
 
   input(terminalId: string, data: string): void {
@@ -103,6 +129,7 @@ export class TerminalService {
   private handleExit(terminalId: string, code: number | null): void {
     const term = this.terminals.get(terminalId);
     if (!term) return;
+    this.release(terminalId, term.held ?? "");
     this.flush(terminalId);
     if (term.flushTimer) clearTimeout(term.flushTimer);
     this.terminals.delete(terminalId);
@@ -113,6 +140,7 @@ export class TerminalService {
   closeAll(): void {
     for (const [id, term] of this.terminals) {
       if (term.flushTimer) clearTimeout(term.flushTimer);
+      if (term.holdTimer) clearTimeout(term.holdTimer);
       try {
         term.channel.close();
       } catch {

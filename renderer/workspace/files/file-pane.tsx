@@ -23,14 +23,14 @@ import {
   StarIcon,
 } from "lucide-react";
 import { ipc } from "@renderer/lib/ipc";
-import type { FsEntry, Protocol } from "@shared/ipc-contract";
+import type { FsEntry, SessionInfo } from "@shared/ipc-contract";
 import { Breadcrumbs } from "./breadcrumbs";
 import { FilePreview } from "./file-preview";
 import { QuickEditDialog } from "./quick-edit-dialog";
 import { SearchDialog } from "./search-dialog";
 import { cn } from "@renderer/lib/cn";
 
-const SEARCHABLE_PROTOCOLS: Protocol[] = ["sftp", "ssh"];
+const SEARCHABLE_PROTOCOLS: SessionInfo["protocol"][] = ["sftp", "ssh"];
 
 interface FilePaneProps {
   mode: "local" | "remote";
@@ -39,7 +39,7 @@ interface FilePaneProps {
   onUpload: (localPath: string, name: string) => Promise<void>;
   onDownload: (remotePath: string, name: string) => Promise<void>;
   sessionId: string;
-  protocol: Protocol;
+  protocol: SessionInfo["protocol"];
   /** Connection profile this session was opened from, if any — gates bookmarks/recents (see remote-places-store.ts). */
   profileId?: string | null;
   onDropFromLocal?: (localPath: string, name: string) => Promise<void>;
@@ -471,7 +471,7 @@ export function FilePane({
   return (
     <div
       className={cn(
-        "h-full flex flex-col border-r border-separator last:border-r-0 transition-colors",
+        "@container h-full flex flex-col border-r border-separator last:border-r-0 transition-colors",
         isDragOver && "bg-accent/5 ring-2 ring-inset ring-accent/30",
       )}
       onDragOver={handleDragOver}
@@ -752,7 +752,8 @@ function FileRow({ entry, selected, onClick, onDoubleClick, onContextMenu, onDra
           {formatSize(entry.size)}
         </Text>
       )}
-      <Text variant="small" color="tertiary" className="shrink-0 w-24 text-right tabular-nums">
+      {/* Dropped in narrow panes (the Files sidebar) so names keep their room; see the @container on FilePane's root. */}
+      <Text variant="small" color="tertiary" className="hidden @sm:block shrink-0 w-24 text-right tabular-nums">
         {formatDate(entry.mtime)}
       </Text>
     </div>

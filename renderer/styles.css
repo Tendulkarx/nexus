@@ -15,6 +15,7 @@
   --bg-secondary: #eef0f4;
   --fg: #1c2333;
   --theme-accent: #2a6df0;
+  --accent-fg: #ffffff;
   --selection: #2a6df0;
 
   --cm-keyword: #7c3aed;
@@ -27,12 +28,16 @@
   --cm-tag: #be123c;
 }
 
+/* Dark seeds follow the ob_dark terminal palette (background #182028,
+   foreground #F8F8F2, cyan #8BE9FD) so app chrome and terminal match. The
+   accent is light, so text on it is dark. */
 .dark {
-  --bg: #151a2e;
-  --bg-secondary: #0d1120;
-  --fg: #e7ecf7;
-  --theme-accent: #5b9dff;
-  --selection: #5b9dff;
+  --bg: #182028;
+  --bg-secondary: #10171d;
+  --fg: #f8f8f2;
+  --theme-accent: #8be9fd;
+  --accent-fg: #0b1015;
+  --selection: #8be9fd;
 
   --cm-keyword: #c084fc;
   --cm-string: #86efac;
@@ -44,8 +49,24 @@
   --cm-tag: #fb7185;
 }
 
+/* Terminals stay dark in both themes. Re-seeding the same variables on the
+   subtree means every token utility inside (text-primary, border-separator,
+   bg-control, …) follows ob_dark without separate classes. Keep in sync with
+   renderer/workspace/terminal/terminal-theme.ts. */
+.terminal-surface {
+  --bg: #182028;
+  --bg-secondary: #10171d;
+  --fg: #f8f8f2;
+  --theme-accent: #8be9fd;
+  --accent-fg: #0b1015;
+  --selection: #8be9fd;
+  background: var(--bg);
+  color: var(--fg);
+}
+
 @theme inline {
   --color-accent: var(--theme-accent);
+  --color-accent-foreground: var(--accent-fg);
   --color-primary: var(--fg);
   --color-secondary: color-mix(in oklab, var(--fg) 68%, transparent);
   --color-tertiary: color-mix(in oklab, var(--fg) 48%, transparent);

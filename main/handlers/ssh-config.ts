@@ -1,6 +1,6 @@
 /**
- * IPC handler for importing entries from the user's ~/.ssh/config as
- * connection-profile candidates. Read-only — actually creating profiles from
+ * IPC handlers for importing connection-profile candidates from the user's
+ * ~/.ssh/config or a sessions.ini. Read-only — actually creating profiles from
  * the parsed hosts the user selects goes through connections:create.
  */
 import { readFile } from "fs/promises";
@@ -9,10 +9,12 @@ import { join } from "path";
 
 import { ipcMain } from "electron";
 
+import { asRecord, reqString } from "./validate.js";
+import { decodeIni, parseSessionIni } from "../services/session-ini-parser.js";
 import { parseSshConfig } from "../services/ssh-config-parser.js";
 
 import { IPC } from "../../renderer/shared/ipc-contract.js";
-import type { SshConfigListResult } from "@shared/ipc-contract";
+import type { SessionIniParseResult, SshConfigListResult } from "@shared/ipc-contract";
 
 export function registerSshConfigHandlers(): void {
   ipcMain.handle(IPC.sshConfig.list, async (): Promise<SshConfigListResult> => {
@@ -24,5 +26,11 @@ export function registerSshConfigHandlers(): void {
       return { hosts: [] };
     }
     return { hosts: parseSshConfig(contents) };
+  });
+
+  // The path comes from a file picker the user just used; the file is only read.
+  ipcMain.handle(IPC.sessionImport.parseIni, async (_e, payload: unknown): Promise<SessionIniParseResult> => {
+    const path = reqString(asRecord(payload, "sessionImport:parseIni"), "path", "sessionImport:parseIni");
+    return { sessions: parseSessionIni(decodeIni(await readFile(path))) };
   });
 }

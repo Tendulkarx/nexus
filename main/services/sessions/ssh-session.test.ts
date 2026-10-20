@@ -15,6 +15,7 @@ vi.mock("../known-hosts-store.js", () => ({
 class FakeSftpClient {
   static instances: FakeSftpClient[] = [];
   static nextConnectError: Error | null = null;
+  static nextSftpError: Error | null = null;
 
   client = {
     forwardOut: vi.fn(),
@@ -23,15 +24,20 @@ class FakeSftpClient {
     on: vi.fn(),
     removeListener: vi.fn(),
     shell: vi.fn(),
+    end: vi.fn(),
   };
-  connect: ReturnType<typeof vi.fn>;
+  getConnection: ReturnType<typeof vi.fn>;
+  getSftpChannel: ReturnType<typeof vi.fn>;
   cwd = vi.fn().mockResolvedValue("/home/test");
   end = vi.fn().mockResolvedValue(true);
 
   constructor() {
     const err = FakeSftpClient.nextConnectError;
     FakeSftpClient.nextConnectError = null;
-    this.connect = err ? vi.fn().mockRejectedValue(err) : vi.fn().mockResolvedValue(undefined);
+    this.getConnection = err ? vi.fn().mockRejectedValue(err) : vi.fn().mockResolvedValue(undefined);
+    const sftpErr = FakeSftpClient.nextSftpError;
+    FakeSftpClient.nextSftpError = null;
+    this.getSftpChannel = sftpErr ? vi.fn().mockRejectedValue(sftpErr) : vi.fn().mockResolvedValue({});
     FakeSftpClient.instances.push(this);
   }
 }
@@ -98,6 +104,7 @@ describe("SshSession", () => {
     vi.clearAllMocks();
     FakeSftpClient.instances = [];
     FakeSftpClient.nextConnectError = null;
+    FakeSftpClient.nextSftpError = null;
     FakeJumpClient.instances = [];
     FakeJumpClient.forwardOutResult = { stream: { fake: "sock" } };
     knownHostsStore.get.mockResolvedValue(null);
@@ -108,10 +115,10 @@ describe("SshSession", () => {
 
     expect(FakeJumpClient.instances).toHaveLength(0);
     const sftp = FakeSftpClient.instances[0];
-    expect(sftp.connect).toHaveBeenCalledWith(
+    expect(sftp.getConnection).toHaveBeenCalledWith(
       expect.objectContaining({ host: "target.example.com", port: 22, username: "root", password: "pw" }),
     );
-    expect(sftp.connect.mock.calls[0][0].sock).toBeUndefined();
+    expect(sftp.getConnection.mock.calls[0][0].sock).toBeUndefined();
     expect(session.info.host).toBe("target.example.com");
   });
 
@@ -139,7 +146,7 @@ describe("SshSession", () => {
     );
 
     const sftp = FakeSftpClient.instances[0];
-    expect(sftp.connect).toHaveBeenCalledWith(
+    expect(sftp.getConnection).toHaveBeenCalledWith(
       expect.objectContaining({ host: "target.example.com", password: "target-pw", sock: { fake: "sock" } }),
     );
   });
@@ -164,7 +171,7 @@ describe("SshSession", () => {
     );
 
     expect(FakeJumpClient.instances[0].end).toHaveBeenCalledTimes(1);
-    expect(FakeSftpClient.instances[0].connect).not.toHaveBeenCalled();
+    expect(FakeSftpClient.instances[0].getConnection).not.toHaveBeenCalled();
   });
 
   it("forwardOut/forwardIn/unforwardIn/onTcpConnection delegate to the underlying ssh2 client", async () => {
@@ -207,5 +214,25 @@ describe("SshSession", () => {
     const session = await SshSession.connect("s1", makeProfile(), "pw");
     await session.close();
     expect(FakeJumpClient.instances).toHaveLength(0);
+  });
+
+  it("opens an SSH profile terminal-only when the server has no SFTP subsystem", async () => {
+    FakeSftpClient.nextSftpError = new Error("Unable to start subsystem: sftp");
+    const session = await SshSession.connect("s1", makeProfile({ protocol: "ssh" }), "pw");
+
+    expect(session.info.kind).toBe("terminal");
+    expect(FakeSftpClient.instances[0].cwd).not.toHaveBeenCalled();
+
+    await session.close();
+    expect(FakeSftpClient.instances[0].client.end).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails an SFTP profile when the server has no SFTP subsystem, and drops the connection", async () => {
+    FakeSftpClient.nextSftpError = new Error("Unable to start subsystem: sftp");
+
+    await expect(SshSession.connect("s1", makeProfile({ protocol: "sftp" }), "pw")).rejects.toThrow(
+      /doesn't offer SFTP/,
+    );
+    expect(FakeSftpClient.instances[0].client.end).toHaveBeenCalledTimes(1);
   });
 });

@@ -32,6 +32,7 @@ export class SnippetStore {
       name: input.name,
       command: input.command,
       tags: input.tags ?? [],
+      macro: input.macro ?? null,
       createdAt: Date.now(),
     };
     data.snippets.push(snippet);
@@ -46,6 +47,7 @@ export class SnippetStore {
     if (patch.name !== undefined) snippet.name = patch.name;
     if (patch.command !== undefined) snippet.command = patch.command;
     if (patch.tags !== undefined) snippet.tags = patch.tags;
+    if (patch.macro !== undefined) snippet.macro = patch.macro;
     await this.store.save(data);
     return snippet;
   }

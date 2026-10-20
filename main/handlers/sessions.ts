@@ -7,6 +7,8 @@ import { asRecord, optString, reqString } from "./validate.js";
 import { editManager } from "../services/edit-manager.js";
 import { portForwardManager } from "../services/port-forward-manager.js";
 import { sessionManager } from "../services/session-manager.js";
+import { listSerialPorts } from "../services/sessions/serial-session.js";
+import { findLocalDisplay, isXQuartzInstalled } from "../services/x11.js";
 
 import { IPC } from "../../renderer/shared/ipc-contract.js";
 import type { ConnectionInput, SessionConnectRequest } from "@shared/ipc-contract";
@@ -21,6 +23,15 @@ export function registerSessionHandlers(): void {
     };
     return sessionManager.connect(request);
   });
+
+  ipcMain.handle(IPC.session.openLocal, async () => sessionManager.openLocal());
+
+  ipcMain.handle(IPC.session.x11Status, async () => ({
+    xquartzInstalled: await isXQuartzInstalled(),
+    display: await findLocalDisplay(),
+  }));
+
+  ipcMain.handle(IPC.session.serialPorts, async () => listSerialPorts());
 
   ipcMain.handle(IPC.session.disconnect, async (_e, payload: unknown) => {
     const obj = asRecord(payload, "session:disconnect");

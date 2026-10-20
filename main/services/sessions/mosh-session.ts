@@ -13,25 +13,19 @@
  * concept, so every terminal tab against a mosh session gets its own
  * independent mosh-server session, same as running the `mosh` CLI twice.
  *
- * KNOWN LIMITATION: mosh-client requires a real controlling terminal (it
- * calls tcgetattr on its stdin to enter raw mode) — verified by hand against
- * a local mosh-server that plain stdio pipes make it exit immediately with
- * "tcgetattr: Operation not supported on socket". A correct fix needs a real
- * pseudo-tty (e.g. node-pty, rebuilt against Electron's Node ABI), which this
- * repo has no build pipeline for today (unlike native/nexus-display-host,
- * which is a separate, deliberately isolated native addon with its own build
- * step). Until that lands, a spawned mosh-client here will start and then
- * exit right away; MoshChannel surfaces that exit's stderr to the terminal
- * pane as a real (if disappointing) error instead of hanging silently.
+ * mosh-client needs a real controlling terminal (it puts its stdin into raw
+ * mode with tcgetattr and reads the window size from it), so it runs in a
+ * node-pty pseudo-terminal — the same PtyChannel local shells use — which
+ * also carries resizes through to it.
  */
-import { execFile, spawn } from "child_process";
-import { EventEmitter } from "events";
+import { execFile } from "child_process";
 import * as fsp from "fs/promises";
 import { promisify } from "util";
 
 import { Client } from "ssh2";
 
 import { logger } from "../../logger.js";
+import { PtyChannel } from "./local-shell-session.js";
 import { connectViaJumpHost, verifyHostKey } from "./ssh-connect.js";
 
 import type { ConnectionProfile } from "@shared/ipc-contract";
@@ -56,7 +50,16 @@ export function parseMoshServerOutput(output: string): { port: number; key: stri
   return { port: Number(match[1]), key: match[2] };
 }
 
+/**
+ * Apps opened from Finder get launchd's minimal PATH, which has no Homebrew,
+ * so the usual install locations are checked as well as `which`.
+ */
+const MOSH_CLIENT_CANDIDATES = ["/opt/homebrew/bin/mosh-client", "/usr/local/bin/mosh-client", "/opt/local/bin/mosh-client"];
+
 async function findMoshClient(): Promise<string> {
+  for (const candidate of MOSH_CLIENT_CANDIDATES) {
+    if (await fsp.access(candidate, fsp.constants.X_OK).then(() => true, () => false)) return candidate;
+  }
   try {
     const { stdout } = await execFileAsync("which", ["mosh-client"]);
     const path = stdout.trim();
@@ -67,33 +70,15 @@ async function findMoshClient(): Promise<string> {
   }
 }
 
-/** Adapts a locally-spawned mosh-client child process to the TerminalChannel shape TerminalService expects. */
-class MoshChannel extends EventEmitter implements TerminalChannel {
-  readonly stderr = new EventEmitter();
-
-  constructor(private readonly child: ReturnType<typeof spawn>) {
-    super();
-    this.child.stdout?.on("data", (chunk: Buffer) => this.emit("data", chunk));
-    this.child.stderr?.on("data", (chunk: Buffer) => this.stderr.emit("data", chunk));
-    this.child.on("close", () => this.emit("close"));
-    this.child.on("exit", (code) => this.emit("exit", code));
-  }
-
-  write(data: string): void {
-    this.child.stdin?.write(data);
-  }
-
-  // No-op: resizing needs a real pty (TIOCSWINSZ + SIGWINCH) — see the class doc comment above.
-  setWindow(_rows: number, _cols: number, _height: number, _width: number): void {}
-
-  close(): void {
-    this.child.kill();
-  }
-}
-
 export class MoshSession {
   readonly info: SessionInfo;
   readonly onConnectCommand: string | null;
+  /**
+   * No OSC 7 hook: mosh-client redraws from its own screen state and drops
+   * OSC sequences, so neither the cwd reports nor the hook's ready marker
+   * would get through (and there's no file pane to follow).
+   */
+  readonly injectShellIntegration = false;
   private readonly profile: ConnectionProfile;
   private readonly secret: string | null;
   private readonly jumpSecret: string | null;
@@ -152,12 +137,16 @@ export class MoshSession {
     return this.spawnMoshClient(port, key, cols, rows);
   }
 
-  private spawnMoshClient(port: number, key: string, _cols: number, _rows: number): TerminalChannel {
-    const child = spawn(this.moshClientPath, [this.profile.host, String(port)], {
-      env: { ...process.env, MOSH_KEY: key },
-      stdio: ["pipe", "pipe", "pipe"],
+  private async spawnMoshClient(port: number, key: string, cols: number, rows: number): Promise<TerminalChannel> {
+    const pty = await import("node-pty");
+    const proc = pty.spawn(this.moshClientPath, [this.profile.host, String(port)], {
+      name: "xterm-256color",
+      cols: Math.max(cols, 1),
+      rows: Math.max(rows, 1),
+      // mosh-client refuses to start without a UTF-8 locale, and Finder-launched apps often have none.
+      env: { ...process.env, TERM: "xterm-256color", LANG: process.env.LANG || "en_US.UTF-8", MOSH_KEY: key },
     });
-    return new MoshChannel(child);
+    return new PtyChannel(proc);
   }
 
   /** SSHes into the target, runs mosh-server, and parses its bootstrap output. */
@@ -242,6 +231,6 @@ export class MoshSession {
   async close(): Promise<void> {
     // Nothing persistent to tear down here — each openShell() call's SSH
     // bootstrap connection already closed itself; TerminalService owns the
-    // lifecycle of the spawned mosh-client processes (see MoshChannel.close()).
+    // lifecycle of the spawned mosh-client processes (PtyChannel.close()).
   }
 }

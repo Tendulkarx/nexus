@@ -7,6 +7,7 @@ import { Checkbox as RxCheckbox } from "radix-ui";
 import { cva, type VariantProps } from "class-variance-authority";
 import { CheckIcon } from "lucide-react";
 import { cn } from "../cn";
+import { useFieldControlId } from "./field-context";
 
 // ── Text ─────────────────────────────────────────────────────────────────
 
@@ -81,7 +82,7 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        accent: "bg-accent text-white hover:bg-accent/90",
+        accent: "bg-accent text-accent-foreground hover:bg-accent/90",
         filled: "bg-control hover:bg-control/80 text-primary",
         glass: "bg-white/10 hover:bg-white/20 text-primary backdrop-blur",
         transparent: "hover:bg-control-subtle text-primary",
@@ -124,9 +125,10 @@ interface InputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "
 }
 
 export const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ variant = "default", size = "default", className, ...props }, ref) => (
+  ({ variant = "default", size = "default", className, id, ...props }, ref) => (
     <input
       ref={ref}
+      id={useFieldControlId(id)}
       className={cn(
         "w-full rounded-medium border border-field bg-transparent outline-none transition-colors",
         "focus:border-accent focus:ring-1 focus:ring-accent/40",
@@ -155,7 +157,7 @@ export const Checkbox = React.forwardRef<HTMLButtonElement, React.ComponentProps
       {...props}
     >
       <RxCheckbox.Indicator>
-        <CheckIcon className="size-3 text-white" />
+        <CheckIcon className="size-3 text-accent-foreground" />
       </RxCheckbox.Indicator>
     </RxCheckbox.Root>
   ),

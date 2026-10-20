@@ -69,6 +69,11 @@ export default defineConfig({
         "@main": resolve(__dirname, "main"),
       },
     },
+    // noVNC uses top-level await. Production builds already target Electron's Chromium,
+    // but the dev server's dependency pre-bundler defaults to older browsers and fails.
+    optimizeDeps: {
+      esbuildOptions: { target: "esnext" },
+    },
     plugins: [react(), tailwindcss()],
   },
 });

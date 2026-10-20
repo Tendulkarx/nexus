@@ -9,6 +9,11 @@ export default [
   { ignores: ["out/**", "dist/**", "node_modules/**", "build/**"] },
   js.configs.recommended,
   {
+    // Dev scripts run under plain Node.
+    files: ["scripts/**/*.{js,mjs}"],
+    languageOptions: { globals: globals.node },
+  },
+  {
     files: ["**/*.{ts,tsx}"],
     languageOptions: {
       parser: tsParser,

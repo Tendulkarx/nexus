@@ -13,9 +13,11 @@ export interface TerminalChannel {
   close(): unknown;
 }
 
-/** Anything TerminalService can open a shell channel against — SshSession or MoshSession. */
+/** Anything TerminalService can open a shell channel against — SshSession, MoshSession or LocalShellSession. */
 export interface TerminalCapableSession {
   openShell(cols: number, rows: number): Promise<TerminalChannel>;
   /** Command(s) to auto-type into each new shell opened on this session, one per line. */
   onConnectCommand: string | null;
+  /** false skips typing the OSC 7 cwd hook into new shells; omitted means true. */
+  injectShellIntegration?: boolean;
 }

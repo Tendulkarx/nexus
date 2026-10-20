@@ -307,6 +307,26 @@ describe("SessionManager", () => {
     expect(() => manager.getTerminal(ftpInfo.sessionId)).toThrow(/interactive terminal/);
   });
 
+  it("openLocal() registers a terminal-only local shell session without a profile", () => {
+    const manager = new SessionManager();
+    const info = manager.openLocal();
+
+    expect(info).toMatchObject({ protocol: "local", kind: "terminal", supportsTerminal: true, profileId: null });
+    expect(manager.list()).toEqual([info]);
+    expect(manager.getTerminal(info.sessionId)).toBe(manager.getTerminal(info.sessionId));
+    expect(() => manager.get(info.sessionId)).toThrow(/local shell session and has no filesystem/);
+    expect(() => manager.getDisplay(info.sessionId)).toThrow(/not a Remote Desktop session/);
+  });
+
+  it("openLocal() gives each call its own session", () => {
+    const manager = new SessionManager();
+    const a = manager.openLocal();
+    const b = manager.openLocal();
+
+    expect(a.sessionId).not.toBe(b.sessionId);
+    expect(manager.list()).toHaveLength(2);
+  });
+
   it("disconnect() closes and removes the session; is a no-op for an unknown id", async () => {
     const session = new FakeSshSession(makeInfo());
     FakeSshSession.connect.mockImplementation(async (sessionId: string) => {

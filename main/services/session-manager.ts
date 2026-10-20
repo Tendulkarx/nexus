@@ -8,19 +8,46 @@ import { randomUUID } from "crypto";
 import { logger } from "../logger.js";
 
 import { activityLog } from "./activity-log.js";
+import { emitToRenderer } from "./ipc-emitter.js";
 import { connectionStore } from "./connection-store.js";
 import { credentialVault } from "./credential-vault.js";
 import { notify } from "./notification-service.js";
 import { BaseSession } from "./sessions/base-session.js";
 import { DisplaySession } from "./sessions/display-session.js";
 import { FtpSession } from "./sessions/ftp-session.js";
+import { LocalShellSession } from "./sessions/local-shell-session.js";
 import { MoshSession } from "./sessions/mosh-session.js";
+import { SerialSession } from "./sessions/serial-session.js";
 import { SshSession } from "./sessions/ssh-session.js";
+import { TelnetSession } from "./sessions/telnet-session.js";
+import { VncSession } from "./sessions/vnc-session.js";
 
-import type { ConnectionProfile, SessionConnectRequest, SessionInfo } from "@shared/ipc-contract";
+import { IPC } from "../../renderer/shared/ipc-contract.js";
+import type {
+  ConnectionProfile,
+  SessionConnectRequest,
+  SessionDisconnectedEvent,
+  SessionInfo,
+} from "@shared/ipc-contract";
+import type { TerminalCapableSession } from "./sessions/terminal-channel.js";
 
-/** Anything SessionManager can track: a filesystem session (BaseSession), a display session, or a mosh session. All expose `info` + `close()`. */
-type ManagedSession = BaseSession | DisplaySession | MoshSession;
+/** Anything SessionManager can track: a filesystem session (BaseSession), a display session, a mosh session or a local shell. All expose `info` + `close()`. */
+type ManagedSession =
+  | BaseSession
+  | DisplaySession
+  | VncSession
+  | MoshSession
+  | LocalShellSession
+  | TelnetSession
+  | SerialSession;
+
+const NO_FILESYSTEM_LABEL: Record<string, string> = {
+  display: "Remote Desktop",
+  mosh: "Mosh",
+  local: "local shell",
+  telnet: "Telnet",
+  serial: "serial",
+};
 
 export class SessionManager {
   private sessions = new Map<string, ManagedSession>();
@@ -49,11 +76,21 @@ export class SessionManager {
         // tab is mounted and reports its bounds via display:connect.
         session = new DisplaySession(sessionId, profile, secret);
         break;
+      case "vnc":
+        // Like rdp, nothing connects until the renderer's VNC pane opens a channel (vnc:open).
+        session = new VncSession(sessionId, profile, secret, jumpSecret);
+        break;
       case "mosh":
         // Like DisplaySession, this only checks that mosh-client is
         // installed locally — the actual SSH-bootstrap-then-mosh-client dance
         // happens lazily per terminal tab, see MoshSession.openShell().
         session = await MoshSession.connect(sessionId, profile, secret, jumpSecret);
+        break;
+      case "telnet":
+        session = await TelnetSession.connect(sessionId, profile, secret);
+        break;
+      case "serial":
+        session = await SerialSession.connect(sessionId, profile);
         break;
     }
 
@@ -85,12 +122,22 @@ export class SessionManager {
     return session.info;
   }
 
+  /** Opens a shell on this Mac. No profile or credentials; each call is a separate session (its own tab). */
+  openLocal(): SessionInfo {
+    const sessionId = randomUUID();
+    const session = new LocalShellSession(sessionId);
+    this.sessions.set(sessionId, session);
+    logger.info("session-manager", "Opened local shell session", { sessionId });
+    return session.info;
+  }
+
   /** Called when a session's underlying connection drops on its own (network loss, server restart, etc.) rather than via disconnect(). */
   private async handleUnexpectedDisconnect(sessionId: string, info: SessionInfo, reason: string): Promise<void> {
     // Already torn down by an explicit disconnect() that raced this — nothing to do.
     if (!this.sessions.has(sessionId)) return;
     this.sessions.delete(sessionId);
     logger.warn("session-manager", "Session disconnected unexpectedly", { sessionId, reason });
+    emitToRenderer(IPC.session.disconnected, { sessionId, reason } satisfies SessionDisconnectedEvent);
     await activityLog
       .record("disconnect", `${info.name} (${info.host}) disconnected unexpectedly`, reason)
       .catch((err) => logger.warn("session-manager", "Failed to record activity log entry", err));
@@ -126,6 +173,7 @@ export class SessionManager {
         color: input.color ?? null,
         secret: null,
         agentForward: input.agentForward ?? false,
+        x11Forward: input.x11Forward ?? false,
         onConnectCommand: input.onConnectCommand ?? null,
         jumpHost: input.jumpHost
           ? {
@@ -148,12 +196,13 @@ export class SessionManager {
     throw new Error("session:connect requires either profileId or inlineProfile");
   }
 
-  /** Returns the session as a filesystem session (SFTP/SSH/FTP/FTPS), or throws for a display (rdp) or terminal-only (mosh) session. */
+  /** Returns the session as a filesystem session (SFTP/SSH/FTP/FTPS), or throws for a display (rdp) or terminal-only (mosh, local) session. */
   get(sessionId: string): BaseSession {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error(`No active session: ${sessionId}`);
     if (!(session instanceof BaseSession)) {
-      const kindLabel = session.info.kind === "display" ? "Remote Desktop" : "Mosh";
+      const kindLabel =
+        session.info.kind === "display" ? NO_FILESYSTEM_LABEL.display : NO_FILESYSTEM_LABEL[session.info.protocol];
       throw new Error(`This connection is a ${kindLabel} session and has no filesystem`);
     }
     return session;
@@ -168,12 +217,28 @@ export class SessionManager {
     return session;
   }
 
-  /** Returns the session as anything that can host an interactive terminal (SSH or Mosh), or throws otherwise. */
-  getTerminal(sessionId: string): SshSession | MoshSession {
+  /** Returns the session as anything that can host an interactive terminal (SSH, Mosh, Telnet, serial or a local shell), or throws otherwise. */
+  getTerminal(sessionId: string): TerminalCapableSession {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error(`No active session: ${sessionId}`);
-    if (session instanceof SshSession || session instanceof MoshSession) return session;
+    if (
+      session instanceof SshSession ||
+      session instanceof MoshSession ||
+      session instanceof LocalShellSession ||
+      session instanceof TelnetSession ||
+      session instanceof SerialSession
+    ) {
+      return session;
+    }
     throw new Error("This connection does not support an interactive terminal");
+  }
+
+  /** Returns the session as a VNC session, or throws otherwise. */
+  getVnc(sessionId: string): VncSession {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new Error(`No active session: ${sessionId}`);
+    if (!(session instanceof VncSession)) throw new Error("This connection is not a VNC session");
+    return session;
   }
 
   /** Returns the session as a display (rdp) session, or throws if it's a filesystem session. */

@@ -8,7 +8,6 @@ import {
   RadioGroupItem,
   ScrollArea,
   SplitView,
-  Sidebar,
   SidebarList,
   SidebarListItem,
   Text,
@@ -18,16 +17,51 @@ import {
   FieldLabel,
   toast,
 } from "@renderer/lib/ui";
-import { PaletteIcon, BellIcon, SparklesIcon, RefreshCwIcon } from "lucide-react";
+import {
+  PaletteIcon,
+  BellIcon,
+  SparklesIcon,
+  RefreshCwIcon,
+  SquareTerminalIcon,
+  HighlighterIcon,
+  PlugIcon,
+  FolderIcon,
+  MonitorIcon,
+  KeyboardIcon,
+} from "lucide-react";
+import {
+  TerminalSettings,
+  SessionSettings,
+  FileSettings,
+  RemoteDesktopSettings,
+  ShortcutSettings,
+  HighlightSettings,
+} from "./preference-sections";
 import type { NativeThemeInfo } from "@renderer/lib/native-theme";
 import type { AiSuggestConfig, ConnectionSyncStatus } from "@shared/ipc-contract";
 import { ipc } from "@renderer/lib/ipc";
 import { useTheme } from "@renderer/lib/hooks";
 
-type SettingsCategory = "appearance" | "notifications" | "aiSuggestions" | "sync";
+type SettingsCategory =
+  | "appearance"
+  | "terminal"
+  | "highlighting"
+  | "sessions"
+  | "files"
+  | "remoteDesktop"
+  | "shortcuts"
+  | "notifications"
+  | "aiSuggestions"
+  | "sync";
 
 const CATEGORIES: { id: SettingsCategory; title: string; icon: React.ReactNode }[] = [
   { id: "appearance", title: "Appearance", icon: <PaletteIcon className="size-4" /> },
+  { id: "terminal", title: "Terminal", icon: <SquareTerminalIcon className="size-4" /> },
+  { id: "highlighting", title: "Highlighting", icon: <HighlighterIcon className="size-4" /> },
+  { id: "sessions", title: "Sessions", icon: <PlugIcon className="size-4" /> },
+  { id: "files", title: "Files", icon: <FolderIcon className="size-4" /> },
+  { id: "remoteDesktop", title: "Remote Desktop", icon: <MonitorIcon className="size-4" /> },
+  { id: "shortcuts", title: "Keyboard Shortcuts", icon: <KeyboardIcon className="size-4" /> },
   { id: "notifications", title: "Notifications", icon: <BellIcon className="size-4" /> },
   { id: "aiSuggestions", title: "AI Suggestions", icon: <SparklesIcon className="size-4" /> },
   { id: "sync", title: "Sync", icon: <RefreshCwIcon className="size-4" /> },
@@ -320,8 +354,8 @@ function ConnectionSyncSettings() {
         <FieldContent>
           <FieldLabel htmlFor="sync-folder">Synced folder</FieldLabel>
           <Text variant="small" color="tertiary">
-            Pick a folder that&apos;s already kept in sync by something else — iCloud Drive, Dropbox, or similar.
-            Nexus only reads and writes one encrypted file inside it; it never talks to a sync service directly.
+            Pick a folder that&apos;s already kept in sync by something else — iCloud Drive, Dropbox, or similar. Nexus
+            only reads and writes one encrypted file inside it; it never talks to a sync service directly.
           </Text>
         </FieldContent>
         <div className="flex items-center gap-2">
@@ -429,31 +463,44 @@ export function SettingsView() {
       minSize={22}
       maxSize={45}
       sidebar={
-        <Sidebar actions={<span className="text-sm font-semibold text-primary truncate">Settings</span>}>
-          <SidebarList
-            items={CATEGORIES.map((c) => c.id)}
-            selectedItem={category}
-            onSelectedItemChange={setCategory}
-            getItemKey={(id) => id}
-          >
-            {CATEGORIES.map((c) => (
-              <SidebarListItem key={c.id} item={c.id} icon={c.icon} title={c.title} />
-            ))}
-          </SidebarList>
-        </Sidebar>
+        // Own header rather than Sidebar's: its drag strip sits above the actions row, which put the
+        // traffic lights on top of the title. This row is the title bar, level with the lights.
+        <div className="h-full flex flex-col bg-chrome">
+          <div className="drag-region flex h-10 items-center pl-20 pr-3 border-b border-separator shrink-0">
+            <span className="text-sm font-semibold text-primary truncate">Settings</span>
+          </div>
+          <div className="flex-1 min-h-0 overflow-y-auto py-1">
+            <SidebarList
+              items={CATEGORIES.map((c) => c.id)}
+              selectedItem={category}
+              onSelectedItemChange={setCategory}
+              getItemKey={(id) => id}
+            >
+              {CATEGORIES.map((c) => (
+                <SidebarListItem key={c.id} item={c.id} icon={c.icon} title={c.title} />
+              ))}
+            </SidebarList>
+          </div>
+        </div>
       }
     >
       <ScrollArea
         className="h-full"
         title={activeCategory.title}
         toolbar={
-          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-separator shrink-0">
+          <div className="drag-region flex h-10 items-center gap-2 px-4 border-b border-separator shrink-0">
             <span className="text-sm font-semibold text-primary">{activeCategory.title}</span>
           </div>
         }
       >
         <div className="px-4 py-4">
           {category === "appearance" && <AppearanceSettings />}
+          {category === "terminal" && <TerminalSettings />}
+          {category === "highlighting" && <HighlightSettings />}
+          {category === "sessions" && <SessionSettings />}
+          {category === "files" && <FileSettings />}
+          {category === "remoteDesktop" && <RemoteDesktopSettings />}
+          {category === "shortcuts" && <ShortcutSettings />}
           {category === "notifications" && <NotificationSettings />}
           {category === "aiSuggestions" && <AiSuggestSettings />}
           {category === "sync" && <ConnectionSyncSettings />}

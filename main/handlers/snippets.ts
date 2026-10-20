@@ -5,6 +5,7 @@ import { ipcMain } from "electron";
 
 import { asRecord, reqString } from "./validate.js";
 import { snippetStore } from "../services/snippet-store.js";
+import { normalizeMacro } from "../../renderer/shared/macros.js";
 
 import { IPC } from "../../renderer/shared/ipc-contract.js";
 import type { SnippetInput } from "@shared/ipc-contract";
@@ -19,6 +20,7 @@ function coerceInput(value: unknown, context: string): SnippetInput {
     name: reqString(obj, "name", context),
     command: reqString(obj, "command", context),
     tags: coerceTags(obj.tags),
+    macro: normalizeMacro(obj.macro),
   };
 }
 
@@ -28,6 +30,7 @@ function coercePatch(value: unknown, context: string): Partial<SnippetInput> {
   if (typeof obj.name === "string") patch.name = obj.name;
   if (typeof obj.command === "string") patch.command = obj.command;
   if (Array.isArray(obj.tags)) patch.tags = coerceTags(obj.tags);
+  if ("macro" in obj) patch.macro = normalizeMacro(obj.macro);
   return patch;
 }
 

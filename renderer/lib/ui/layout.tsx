@@ -2,6 +2,7 @@ import * as React from "react";
 import { PanelGroup as Rx, Panel as RxPanel, PanelResizeHandle } from "react-resizable-panels";
 import { cn } from "../cn";
 import { Input } from "./primitives";
+import { FieldControlIdContext } from "./field-context";
 
 // ── SplitView (persisted sidebar + main content) ────────────────────────
 
@@ -38,6 +39,16 @@ export function SplitView({
   );
 }
 
+// ── Traffic-light inset ──────────────────────────────────────────────────
+
+/**
+ * Whether Sidebar/Toolbar headers sit in the window's top-left corner and so
+ * must pad past the inset macOS traffic lights (trafficLightPosition x:16 in
+ * main/index.ts). AppShell sets it to false for everything below its own
+ * title bar, which already clears them.
+ */
+export const TrafficLightInsetContext = React.createContext(true);
+
 // ── Sidebar ──────────────────────────────────────────────────────────────
 
 interface SidebarProps {
@@ -57,10 +68,12 @@ export function Sidebar({
   actions,
   children,
 }: SidebarProps) {
+  const inset = React.useContext(TrafficLightInsetContext);
   return (
     <div className="h-full flex flex-col bg-chrome">
-      {/* drag-region + left padding clears the inset macOS traffic lights (trafficLightPosition x:16 in main/index.ts) */}
-      <div className="drag-region flex items-center gap-1.5 p-2 pl-20 border-b border-separator shrink-0">
+      <div
+        className={cn("drag-region flex items-center gap-1.5 p-2 border-b border-separator shrink-0", inset && "pl-20")}
+      >
         {searchable && (
           <Input
             size="small"
@@ -162,12 +175,13 @@ export function EmptyState({ title, description, actions, placement = "center" }
 // ── Toolbar ──────────────────────────────────────────────────────────────
 
 export function Toolbar({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+  const inset = React.useContext(TrafficLightInsetContext);
   return (
     <div
       data-toolbar
       className={cn(
-        // pl-20 clears the inset macOS traffic lights (trafficLightPosition x:16 in main/index.ts)
-        "drag-region flex items-center justify-between gap-2 border-b border-separator bg-chrome pl-20 pr-3 py-2 shrink-0",
+        "drag-region flex items-center justify-between gap-2 border-b border-separator bg-chrome pr-3 py-2 shrink-0",
+        inset ? "pl-20" : "pl-3",
         className,
       )}
       {...props}
@@ -200,6 +214,7 @@ interface FieldProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 export function Field({ label, description, orientation = "vertical", className, children, ...props }: FieldProps) {
+  const controlId = React.useId();
   return (
     <div
       className={cn("flex gap-2 py-2", orientation === "horizontal" ? "flex-row items-center" : "flex-col", className)}
@@ -208,10 +223,12 @@ export function Field({ label, description, orientation = "vertical", className,
       {label ? (
         <>
           <FieldContent className={orientation === "horizontal" ? "w-32 shrink-0" : undefined}>
-            <FieldLabel>{label}</FieldLabel>
+            <FieldLabel htmlFor={controlId}>{label}</FieldLabel>
             {description && <p className="text-xs text-tertiary">{description}</p>}
           </FieldContent>
-          <div className="flex-1 min-w-0">{children}</div>
+          <div className="flex-1 min-w-0">
+            <FieldControlIdContext.Provider value={controlId}>{children}</FieldControlIdContext.Provider>
+          </div>
         </>
       ) : (
         children

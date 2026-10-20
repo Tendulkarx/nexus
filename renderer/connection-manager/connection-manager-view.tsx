@@ -1,37 +1,39 @@
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  SplitView,
-  Sidebar,
-  SidebarList,
-  SidebarListItem,
   ScrollArea,
   Button,
   EmptyState,
   AlertDialog,
   Dialog,
   Input,
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
   Text,
-  Badge,
   Checkbox,
   Label,
   Field,
 } from "@renderer/lib/ui";
 import {
   PlusIcon,
-  FolderIcon,
-  ServerIcon,
   Loader2Icon,
   LayoutGridIcon,
   ListIcon,
-  ClockIcon,
   TagIcon,
   MoreHorizontalIcon,
 } from "lucide-react";
 import { ipc } from "@renderer/lib/ipc";
 import { setSession } from "@renderer/lib/sessions";
 import { addOpenSession } from "@renderer/lib/open-sessions-store";
-import { NEW_CONNECTION_EVENT, NEW_FOLDER_EVENT } from "@renderer/lib/menu-events";
+import {
+  NEW_CONNECTION_EVENT,
+  NEW_FOLDER_EVENT,
+  CONNECT_PROFILE_EVENT,
+  type ConnectProfileEventDetail,
+} from "@renderer/lib/menu-events";
 import { usePersistedState } from "@renderer/lib/hooks";
 import { cn } from "@renderer/lib/cn";
 import type {
@@ -46,7 +48,10 @@ import { QuickConnectBar } from "./quick-connect-bar";
 import { ProfileCard } from "./profile-card";
 import { ProfileRow } from "./profile-row";
 import { SshConfigImportDialog } from "./ssh-config-import-dialog";
+import { SessionImportDialog } from "./session-import-dialog";
 import { collectTags, matchesTagFilter } from "./tag-filter";
+import { groupProfiles } from "@renderer/main/shell/group-profiles";
+import { describeConnectFailure } from "@renderer/lib/connect-error";
 import { toast } from "@renderer/lib/ui";
 
 type ViewMode = "grid" | "list";
@@ -65,19 +70,17 @@ const PROTOCOL_LABELS: Record<Protocol, string> = {
   ftps: "FTPS",
   ssh: "SSH",
   rdp: "RDP",
+  vnc: "VNC",
   mosh: "Mosh",
+  telnet: "Telnet",
+  serial: "Serial",
 };
 
-const PROTOCOL_ORDER: Protocol[] = ["sftp", "ssh", "mosh", "ftp", "ftps", "rdp"];
+/** VNC asks for its password itself; Telnet and serial sign in inside the terminal. */
+const NO_PASSWORD_PROMPT: Protocol[] = ["vnc", "telnet", "serial"];
 
-const PROTOCOL_DOT: Record<Protocol, string> = {
-  sftp: "bg-blue-500",
-  ftp: "bg-green-500",
-  ftps: "bg-purple-500",
-  ssh: "bg-orange-500",
-  rdp: "bg-fuchsia-500",
-  mosh: "bg-yellow-500",
-};
+const PROTOCOL_ORDER: Protocol[] = ["sftp", "ssh", "mosh", "telnet", "serial", "ftp", "ftps", "rdp", "vnc"];
+
 
 function getProtocolColor(protocol: Protocol): BadgeColor {
   switch (protocol) {
@@ -86,7 +89,10 @@ function getProtocolColor(protocol: Protocol): BadgeColor {
     case "ftps": return "purple";
     case "ssh": return "orange";
     case "rdp": return "magenta";
+    case "vnc": return "red";
     case "mosh": return "yellow";
+    case "telnet": return "secondary";
+    case "serial": return "primary";
   }
 }
 
@@ -117,9 +123,6 @@ function matchesSidebarSelection(profile: ConnectionProfileDTO, item: SidebarIte
   }
 }
 
-function SidebarSectionLabel({ children }: { children: React.ReactNode }) {
-  return <p className="px-3.5 pt-3 pb-1 text-[10px] font-semibold text-tertiary uppercase tracking-wide">{children}</p>;
-}
 
 export function ConnectionManagerView() {
   const qc = useQueryClient();
@@ -133,6 +136,7 @@ export function ConnectionManagerView() {
   const [newFolderName, setNewFolderName] = React.useState("");
   const [showNewFolder, setShowNewFolder] = React.useState(false);
   const [showSshConfigImport, setShowSshConfigImport] = React.useState(false);
+  const [importFile, setImportFile] = React.useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = React.useState<ConnectionProfileDTO | null>(null);
   const [connectingId, setConnectingId] = React.useState<string | null>(null);
   const [passwordPrompt, setPasswordPrompt] = React.useState<{ profile: ConnectionProfileDTO; password: string } | null>(null);
@@ -215,6 +219,19 @@ export function ConnectionManagerView() {
     return () => window.removeEventListener(NEW_FOLDER_EVENT, handler);
   }, []);
 
+  // Connect requests from the shell's Sessions sidebar. Re-subscribed when the
+  // profile list changes so the lookup never reads a stale snapshot.
+  const profilesForConnect = connectionsQuery.data?.profiles;
+  React.useEffect(() => {
+    const handler = (e: Event) => {
+      const { profileId } = (e as CustomEvent<ConnectProfileEventDetail>).detail;
+      const profile = profilesForConnect?.find((p) => p.id === profileId);
+      if (profile) void handleConnect(profile);
+    };
+    window.addEventListener(CONNECT_PROFILE_EVENT, handler);
+    return () => window.removeEventListener(CONNECT_PROFILE_EVENT, handler);
+  }, [profilesForConnect]);
+
   const { profiles = [], folders = [] } = connectionsQuery.data ?? {};
 
   const recentCount = profiles.filter((p) => p.lastConnectedAt != null).length;
@@ -227,6 +244,12 @@ export function ConnectionManagerView() {
   const sidebarProtocolItems: SidebarItem[] = presentProtocols.map((protocol): SidebarItem => ({ kind: "protocol", protocol }));
 
   const allTags = collectTags(profiles);
+  // The page's "Show" menu: everything the old side list offered, in one control.
+  const showItems: SidebarItem[] = [...sidebarViewItems, ...sidebarFolderItems, ...sidebarProtocolItems];
+  const countFor = (item: SidebarItem) =>
+    item.kind === "recent" ? recentCount : profiles.filter((p) => matchesSidebarSelection(p, item)).length;
+  const showLabel = (item: SidebarItem) =>
+    `${item.kind === "folder" ? "Folder: " : ""}${getViewTitle(item)} (${countFor(item)})`;
 
   let filteredProfiles = profiles.filter((p) => {
     const matchesSearch =
@@ -239,16 +262,36 @@ export function ConnectionManagerView() {
     filteredProfiles = [...filteredProfiles].sort((a, b) => (b.lastConnectedAt ?? 0) - (a.lastConnectedAt ?? 0));
   }
 
+  // Folder headings, as in the Sessions sidebar. Not for Recent (its order is the point) or a single
+  // folder (the Show menu already names it), and no heading when there are no folders at all.
+  const sections: { key: string; name: string | null; profiles: ConnectionProfileDTO[] }[] =
+    selectedSidebarItem.kind === "recent" || selectedSidebarItem.kind === "folder" || folders.length === 0
+      ? [{ key: "all", name: null, profiles: filteredProfiles }]
+      : groupProfiles(filteredProfiles, folders, "");
+
+  async function pickImportFile() {
+    const result = await window.nexusAPI.dialog.showOpenDialog({
+      title: "Import from session-file",
+      message: "Choose sessions.ini, or a .mxtsessions file exported from session-file",
+      properties: ["openFile"],
+      filters: [{ name: "session-file sessions", extensions: ["ini", "mxtsessions"] }],
+    });
+    const filePath = result.filePaths[0];
+    if (!result.canceled && filePath) setImportFile(filePath);
+  }
+
   async function handleMoreActions() {
     const CMD_NEW_FOLDER = 1;
     const CMD_SSH_IMPORT = 2;
     const CMD_EXPORT = 3;
     const CMD_IMPORT = 4;
+    const CMD_SESSION_IMPORT = 5;
     const result = await window.nexusAPI.Menu.popup({
       items: [
         { label: "New Folder…", commandId: CMD_NEW_FOLDER },
         { type: "separator" },
         { label: "Import from SSH Config…", commandId: CMD_SSH_IMPORT },
+        { label: "Import from session-file…", commandId: CMD_SESSION_IMPORT },
         { type: "separator" },
         { label: "Export Connections…", commandId: CMD_EXPORT },
         { label: "Import Connections…", commandId: CMD_IMPORT },
@@ -259,6 +302,7 @@ export function ConnectionManagerView() {
     else if (result.commandId === CMD_SSH_IMPORT) setShowSshConfigImport(true);
     else if (result.commandId === CMD_EXPORT) openExportDialog();
     else if (result.commandId === CMD_IMPORT) void handleImportClick();
+    else if (result.commandId === CMD_SESSION_IMPORT) void pickImportFile();
   }
 
   function toggleTagFilter(tag: string) {
@@ -307,7 +351,8 @@ export function ConnectionManagerView() {
 
   async function handleConnect(profile: ConnectionProfileDTO, secret?: string) {
     console.log("[ConnectionManagerView:connect]", { profileId: profile.id, hasSecret: profile.hasSecret, authType: profile.authType });
-    if (!secret && !profile.hasSecret && profile.authType === "password") {
+    // VNC asks in its own viewer, and only if the server wants a login, so it doesn't need one up front.
+    if (!secret && !profile.hasSecret && profile.authType === "password" && !NO_PASSWORD_PROMPT.includes(profile.protocol)) {
       setPasswordPrompt({ profile, password: "" });
       return;
     }
@@ -321,8 +366,13 @@ export function ConnectionManagerView() {
       setSession(sessionInfo);
       addOpenSession(sessionInfo.sessionId);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Connection failed";
-      toast.error(msg);
+      const failure = describeConnectFailure(err instanceof Error ? err.message : "Connection failed", profile);
+      // Stays until dismissed: a sign-in failure is easy to miss otherwise, and looks like nothing happened.
+      toast.error(failure.title, {
+        description: failure.hint,
+        duration: Infinity,
+        action: failure.suggestEdit ? { label: "Edit", onClick: () => setEditProfile(profile) } : undefined,
+      });
     } finally {
       setConnectingId(null);
       setPasswordPrompt(null);
@@ -331,149 +381,7 @@ export function ConnectionManagerView() {
 
   return (
     <div className="h-full flex flex-col">
-      <SplitView
-        storageKey="connection-manager"
-        sidebar={
-          <Sidebar
-            searchable
-            searchPlaceholder="Filter…"
-            searchValue={searchValue}
-            onSearchChange={setSearchValue}
-            actions={
-              <>
-                <Button
-                  variant="accent"
-                  size="small"
-                  className="flex-1 min-w-0"
-                  onClick={() => setShowNewConnection(true)}
-                >
-                  <PlusIcon className="size-3.5 shrink-0" />
-                  <span className="truncate">New Connection</span>
-                </Button>
-                <Button
-                  iconOnly
-                  variant="transparent"
-                  size="small"
-                  onClick={() => void handleMoreActions()}
-                  aria-label="More actions"
-                >
-                  <MoreHorizontalIcon className="size-3.5" />
-                </Button>
-              </>
-            }
-          >
-            <SidebarSectionLabel>Views</SidebarSectionLabel>
-            <SidebarList
-              items={sidebarViewItems}
-              selectedItem={selectedSidebarItem}
-              onSelectedItemChange={setSelectedSidebarItem}
-              getItemKey={getItemKey}
-            >
-              <SidebarListItem
-                item={{ kind: "all" }}
-                icon={<ServerIcon className="size-4" />}
-                title="All Connections"
-                accessory={<Badge color="secondary">{profiles.length}</Badge>}
-              />
-              {recentCount > 0 && (
-                <SidebarListItem
-                  item={{ kind: "recent" }}
-                  icon={<ClockIcon className="size-4" />}
-                  title="Recent"
-                  accessory={<Badge color="secondary">{recentCount}</Badge>}
-                />
-              )}
-            </SidebarList>
-
-            {folders.length > 0 && (
-              <>
-                <SidebarSectionLabel>Folders</SidebarSectionLabel>
-                <SidebarList
-                  items={sidebarFolderItems}
-                  selectedItem={selectedSidebarItem}
-                  onSelectedItemChange={setSelectedSidebarItem}
-                  getItemKey={getItemKey}
-                >
-                  {folders.map((folder) => {
-                    const count = profiles.filter((p) => p.folderId === folder.id).length;
-                    return (
-                      <SidebarListItem
-                        key={folder.id}
-                        item={{ kind: "folder", folder }}
-                        icon={<FolderIcon className="size-4" />}
-                        title={folder.name}
-                        accessory={count > 0 ? <Badge color="secondary">{count}</Badge> : undefined}
-                      />
-                    );
-                  })}
-                </SidebarList>
-              </>
-            )}
-
-            {presentProtocols.length > 0 && (
-              <>
-                <SidebarSectionLabel>Protocols</SidebarSectionLabel>
-                <SidebarList
-                  items={sidebarProtocolItems}
-                  selectedItem={selectedSidebarItem}
-                  onSelectedItemChange={setSelectedSidebarItem}
-                  getItemKey={getItemKey}
-                >
-                  {presentProtocols.map((protocol) => {
-                    const count = profiles.filter((p) => p.protocol === protocol).length;
-                    return (
-                      <SidebarListItem
-                        key={protocol}
-                        item={{ kind: "protocol", protocol }}
-                        icon={<span className={cn("block size-2.5 rounded-full", PROTOCOL_DOT[protocol])} />}
-                        title={PROTOCOL_LABELS[protocol]}
-                        accessory={<Badge color="secondary">{count}</Badge>}
-                      />
-                    );
-                  })}
-                </SidebarList>
-              </>
-            )}
-
-            {allTags.length > 0 && (
-              <>
-                <SidebarSectionLabel>Tags</SidebarSectionLabel>
-                <div className="flex flex-col gap-0.5 px-1.5">
-                  {allTags.map((tag) => {
-                    const active = selectedTags.includes(tag);
-                    const count = profiles.filter((p) => p.tags.includes(tag)).length;
-                    return (
-                      <button
-                        key={tag}
-                        type="button"
-                        onClick={() => toggleTagFilter(tag)}
-                        className={cn(
-                          "flex items-center gap-2 rounded-medium px-2 py-1.5 text-sm text-left transition-colors",
-                          active ? "bg-accent/15 text-accent" : "text-secondary hover:bg-control-subtle hover:text-primary",
-                        )}
-                      >
-                        <TagIcon className="size-4 shrink-0" />
-                        <span className="flex-1 min-w-0 truncate">{tag}</span>
-                        <Badge color="secondary">{count}</Badge>
-                      </button>
-                    );
-                  })}
-                  {selectedTags.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setSelectedTags([])}
-                      className="px-2 py-1 text-left text-xs text-tertiary hover:text-secondary underline"
-                    >
-                      Clear tag filter
-                    </button>
-                  )}
-                </div>
-              </>
-            )}
-          </Sidebar>
-        }
-      >
-        <div className="h-full flex flex-col">
+      <div className="flex-1 min-h-0 flex flex-col">
           <QuickConnectBar onConnect={(sessionInfo) => {
             setSession(sessionInfo);
             addOpenSession(sessionInfo.sessionId);
@@ -482,14 +390,39 @@ export function ConnectionManagerView() {
           <ScrollArea
             className="flex-1"
             toolbar={
-              <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-separator">
-                <div className="flex items-baseline gap-2 min-w-0">
-                  <Text variant="strong" as="h2" truncate>{getViewTitle(selectedSidebarItem)}</Text>
+              <div className="flex flex-col gap-2 px-4 py-2.5 border-b border-separator">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Input
+                    size="small"
+                    variant="filled"
+                    placeholder="Filter…"
+                    aria-label="Filter connections"
+                    value={searchValue}
+                    onChange={(e) => setSearchValue(e.target.value)}
+                    className="w-48"
+                  />
+                  <Select
+                    value={getItemKey(selectedSidebarItem)}
+                    onValueChange={(key) => {
+                      const item = showItems.find((i) => getItemKey(i) === key);
+                      if (item) setSelectedSidebarItem(item);
+                    }}
+                  >
+                    <SelectTrigger size="small" aria-label="Show" className="min-w-44">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {showItems.map((item) => (
+                        <SelectItem key={getItemKey(item)} value={getItemKey(item)}>
+                          {showLabel(item)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <Text variant="small" color="tertiary" className="shrink-0">
                     {filteredProfiles.length} connection{filteredProfiles.length === 1 ? "" : "s"}
                   </Text>
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
+                  <div className="flex-1" />
                   <Button
                     iconOnly
                     variant={viewMode === "grid" ? "filled" : "transparent"}
@@ -508,7 +441,51 @@ export function ConnectionManagerView() {
                   >
                     <ListIcon className="size-3.5" />
                   </Button>
+                  <Button variant="accent" size="small" onClick={() => setShowNewConnection(true)}>
+                    <PlusIcon className="size-3.5 shrink-0" />
+                    New Connection
+                  </Button>
+                  <Button
+                    iconOnly
+                    variant="transparent"
+                    size="small"
+                    onClick={() => void handleMoreActions()}
+                    aria-label="More actions"
+                  >
+                    <MoreHorizontalIcon className="size-3.5" />
+                  </Button>
                 </div>
+                {allTags.length > 0 && (
+                  <div role="group" aria-label="Filter by tag" className="flex flex-wrap items-center gap-1.5">
+                    {allTags.map((tag) => {
+                      const active = selectedTags.includes(tag);
+                      return (
+                        <button
+                          key={tag}
+                          type="button"
+                          aria-pressed={active}
+                          onClick={() => toggleTagFilter(tag)}
+                          className={cn(
+                            "flex items-center gap-1 rounded-pill border px-2.5 py-0.5 text-xs transition-colors",
+                            active ? "border-accent bg-accent/10 text-primary" : "border-separator text-secondary hover:text-primary",
+                          )}
+                        >
+                          <TagIcon className="size-3" aria-hidden="true" />
+                          {tag}
+                        </button>
+                      );
+                    })}
+                    {selectedTags.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedTags([])}
+                        className="px-1 text-xs text-tertiary hover:text-secondary underline"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             }
           >
@@ -536,53 +513,67 @@ export function ConnectionManagerView() {
                   ) : undefined
                 }
               />
-            ) : viewMode === "grid" ? (
-              <div className="p-5 grid grid-cols-[repeat(auto-fit,minmax(260px,340px))] gap-4">
-                {filteredProfiles.map((profile) => (
-                  <ProfileCard
-                    key={profile.id}
-                    profile={profile}
-                    protocolColor={getProtocolColor(profile.protocol)}
-                    connecting={connectingId === profile.id}
-                    onConnect={() => handleConnect(profile)}
-                    onEdit={() => setEditProfile(profile)}
-                    onDuplicate={() => setDuplicateSource(profile)}
-                    onDelete={() => setDeleteTarget(profile)}
-                  />
-                ))}
-              </div>
             ) : (
-              <div className="flex flex-col">
-                {filteredProfiles.map((profile) => (
-                  <ProfileRow
-                    key={profile.id}
-                    profile={profile}
-                    protocolColor={getProtocolColor(profile.protocol)}
-                    connecting={connectingId === profile.id}
-                    onConnect={() => handleConnect(profile)}
-                    onEdit={() => setEditProfile(profile)}
-                    onDuplicate={() => setDuplicateSource(profile)}
-                    onDelete={() => setDeleteTarget(profile)}
-                  />
+              <div className="flex flex-col gap-1 py-2">
+                {sections.map((section) => (
+                  <section key={section.key} aria-label={section.name ?? "Connections"}>
+                    {section.name && (
+                      <h3 className="flex items-center gap-2 px-5 pt-3 pb-1 text-xs font-semibold uppercase tracking-wide text-secondary">
+                        {section.name}
+                        <span className="font-normal text-tertiary">{section.profiles.length}</span>
+                      </h3>
+                    )}
+                    {viewMode === "grid" ? (
+                      <div className="px-5 py-2 grid grid-cols-[repeat(auto-fit,minmax(260px,340px))] gap-4">
+                        {section.profiles.map((profile) => (
+                          <ProfileCard
+                            key={profile.id}
+                            profile={profile}
+                            protocolColor={getProtocolColor(profile.protocol)}
+                            connecting={connectingId === profile.id}
+                            onConnect={() => handleConnect(profile)}
+                            onEdit={() => setEditProfile(profile)}
+                            onDuplicate={() => setDuplicateSource(profile)}
+                            onDelete={() => setDeleteTarget(profile)}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="flex flex-col">
+                        {section.profiles.map((profile) => (
+                          <ProfileRow
+                            key={profile.id}
+                            profile={profile}
+                            protocolColor={getProtocolColor(profile.protocol)}
+                            connecting={connectingId === profile.id}
+                            onConnect={() => handleConnect(profile)}
+                            onEdit={() => setEditProfile(profile)}
+                            onDuplicate={() => setDuplicateSource(profile)}
+                            onDelete={() => setDeleteTarget(profile)}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </section>
                 ))}
               </div>
             )}
           </ScrollArea>
         </div>
-      </SplitView>
 
       {/* New connection dialog */}
       <Dialog
         open={showNewConnection}
         onOpenChange={setShowNewConnection}
-        title="New Connection"
+        title="New Session"
         size="medium"
       >
         <ConnectionForm
-          onSave={(profile) => {
+          onSave={(profile, { connect }) => {
             setShowNewConnection(false);
             void qc.invalidateQueries({ queryKey: ["connections"] });
-            toast.success(`Saved: ${profile.name}`);
+            if (connect) void handleConnect(profile);
+            else toast.success(`Saved: ${profile.name}`);
           }}
           onCancel={() => setShowNewConnection(false)}
           folders={folders}
@@ -620,10 +611,11 @@ export function ConnectionManagerView() {
         >
           <ConnectionForm
             duplicateFrom={duplicateSource}
-            onSave={(profile) => {
+            onSave={(profile, { connect }) => {
               setDuplicateSource(null);
               void qc.invalidateQueries({ queryKey: ["connections"] });
-              toast.success(`Saved: ${profile.name}`);
+              if (connect) void handleConnect(profile);
+              else toast.success(`Saved: ${profile.name}`);
             }}
             onCancel={() => setDuplicateSource(null)}
             folders={folders}
@@ -764,6 +756,7 @@ export function ConnectionManagerView() {
       </Dialog>
 
       <SshConfigImportDialog open={showSshConfigImport} onOpenChange={setShowSshConfigImport} />
+      <SessionImportDialog path={importFile} onClose={() => setImportFile(null)} />
 
       {/* Delete confirmation */}
       {deleteTarget && (

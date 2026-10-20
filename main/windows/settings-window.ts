@@ -22,7 +22,8 @@ export async function openSettingsWindow(): Promise<void> {
     show: false,
     center: true,
     titleBarStyle: "hiddenInset",
-    trafficLightPosition: { x: 16, y: 16 },
+    // y 14 centres the 12px lights in the 40px (h-10) header row.
+    trafficLightPosition: { x: 16, y: 14 },
     vibrancy: "sidebar",
     visualEffectState: "active",
     backgroundColor: "#00000000",

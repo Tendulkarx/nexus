@@ -1,0 +1,91 @@
+name: Release
+
+# On every push to main, release-please keeps a "chore(main): release x.y.z" PR up
+# to date: the next version (from the conventional commit messages since the last
+# release), package.json bumped, and CHANGELOG.md with the release notes. Merging
+# that PR tags vX.Y.Z and publishes the GitHub release; the build job then packages
+# the app on macOS and attaches it, with latest-mac.yml for the in-app updater.
+# See docs/releasing.md.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Rebuild and re-upload the app for an existing release tag (e.g. v1.1.0)"
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@v5.0.0
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  build-mac:
+    needs: release-please
+    # always() so a manual run (where release-please is skipped) still builds.
+    if: always() && (needs.release-please.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch')
+    runs-on: macos-latest # Apple silicon: builds arm64, the architecture the vendored FreeRDP is built for
+    env:
+      TAG: ${{ needs.release-please.outputs.tag_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install build tools for the RDP add-on
+        run: brew install cmake ninja pkg-config openssl@3 uriparser jansson
+
+      # FreeRDP is built from source (see native/nexus-display-host/README.md, "Dependency
+      # licensing"), which takes several minutes; reuse it until the build script changes.
+      - name: Restore vendored FreeRDP
+        uses: actions/cache@v6.1.0
+        with:
+          path: native/nexus-display-host/vendor/freerdp
+          key: freerdp-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('native/nexus-display-host/scripts/*.sh') }}
+
+      - run: npm ci
+      - name: Build the RDP add-on
+        run: npm run build:native
+      - name: Build the app
+        run: npm run build
+
+      # Signing and notarisation switch on when these secrets exist; until then the
+      # app is ad-hoc signed and macOS warns on first open (see docs/releasing.md).
+      - name: Package
+        env:
+          CSC_LINK: ${{ secrets.MAC_CERTIFICATE_P12_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -z "$CSC_LINK" ]; then
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+            unset CSC_LINK CSC_KEY_PASSWORD
+            echo "::warning::No signing certificate configured; this release is unsigned."
+          fi
+          npx electron-builder --mac --arm64 --publish never
+
+      - name: Attach to the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "$TAG" --clobber \
+            dist/*.dmg dist/*.zip dist/*.blockmap dist/latest-mac.yml

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 
-import { joinGroup, leaveGroup, toggleGroup, broadcastTargets } from "./terminal-broadcast-store.js";
+import { joinGroup, leaveGroup, toggleGroup, broadcastTargets, toggleAll } from "./terminal-broadcast-store.js";
 
 describe("joinGroup", () => {
   it("adds a terminalId to an empty group", () => {
@@ -55,5 +55,15 @@ describe("broadcastTargets", () => {
 
   it("targets only itself when the group has just one member", () => {
     expect(broadcastTargets(new Set(["a"]), "a")).toEqual(["a"]);
+  });
+});
+
+describe("toggleAll", () => {
+  it("puts every live terminal in the group when nothing is broadcasting", () => {
+    expect(toggleAll(new Set(), new Set(["a", "b", "c"]))).toEqual(new Set(["a", "b", "c"]));
+  });
+
+  it("stops everything when anything is broadcasting, even a partial group", () => {
+    expect(toggleAll(new Set(["a"]), new Set(["a", "b"]))).toEqual(new Set());
   });
 });
