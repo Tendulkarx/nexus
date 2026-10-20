@@ -30,7 +30,8 @@ PR merged into main
   release-please tags vX.Y.Z and publishes the GitHub release (notes = changelog entry)
   build-mac (macos-latest, Apple silicon)
     builds the RDP add-on (vendored FreeRDP, cached), the app, then electron-builder
-    attaches Nexus-x.y.z-arm64.dmg, Nexus-x.y.z-arm64-mac.zip, blockmaps, latest-mac.yml
+    attaches Nexus-x.y.z-arm64.dmg
+    once signed, also the updater's files: -mac.zip, blockmaps, latest-mac.yml
 ```
 
 To ship: merge the release PR when you're happy with what's in it. Nothing is

@@ -199,7 +199,7 @@ so a new protocol fails type-checking until it's accepted there.
 - CI/CD (`.github/workflows/`, `docs/releasing.md`): `ci.yml` runs type-check, lint, test and build on Linux;
   `pr-title.yml` requires Conventional Commit PR titles (squash merges make them the commit messages);
   `release.yml` runs release-please (version, CHANGELOG.md, release PR) and, when a release PR merges, packages
-  arm64 on macOS (RDP add-on included) and uploads the DMG/ZIP/blockmaps/latest-mac.yml to the release. Don't
+  arm64 on macOS (RDP add-on included) and uploads the DMG to the release (plus the updater's zip, blockmaps and latest-mac.yml once signing secrets exist). Don't
   edit `version` in package.json or CHANGELOG.md by hand; release-please owns them. Signing switches on from
   repo secrets (see docs/releasing.md). Tests must pass on Linux too: keep macOS-only paths out of them.
 - Packaging: `npx electron-vite build && CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --mac dir` makes
