@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/Tendulkarx/nexus/compare/v1.1.0...v1.1.1) (2026-10-24)
+
+
+### Fixes
+
+* neutral names and wording for the session file import ([e3a7ac9](https://github.com/Tendulkarx/nexus/commit/e3a7ac9079faa41240e87d2cc4107a9eb04f494b))
+
 ## [1.1.0](https://github.com/Tendulkarx/nexus/compare/v1.0.0...v1.1.0) (2026-10-20)
 
 
