@@ -4,6 +4,7 @@
   "productName": "Nexus",
   "description": "A modern SFTP/FTP + SSH client for macOS",
   "private": true,
+  "license": "UNLICENSED",
   "type": "module",
   "main": "./out/main/index.js",
   "scripts": {

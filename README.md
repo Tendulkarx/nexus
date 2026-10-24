@@ -2,8 +2,7 @@
 
 A remote-session manager for macOS. SSH, SFTP, FTP, RDP, VNC, Mosh, Telnet and serial connections live in one window, with a terminal and a file browser side by side.
 
-<!-- Screenshot: add docs/screenshot.png and uncomment the line below -->
-<!-- ![Nexus](docs/screenshot.png) -->
+![Nexus showing saved connections grouped by folder, with protocol badges and quick connect](docs/screenshot.png)
 
 ## Features
 
@@ -81,4 +80,6 @@ Releases are automated with release-please: merging the release pull request bui
 
 ## Licence
 
-Not yet chosen. Until a licence is added, all rights are reserved.
+Copyright © 2026 O'Neil Blake. All rights reserved.
+
+The source is public so you can read how Nexus works. It is not open source: you may not copy, modify or redistribute it without permission.
