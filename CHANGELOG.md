@@ -5,4 +5,4 @@
 
 ### New features
 
-* Tabbed workspace with new protocols, tools, local servers and CI/CD ([#1](https://github.com/Tendulkarx/nexus/issues/1)) ([293d9d4](https://github.com/Tendulkarx/nexus/commit/293d9d496e53380d91aac9572b641997689a94b2))
+* Tabbed workspace with new protocols, tools, local servers and CI/CD ([#1](https://github.com/Tendulkarx/nexus/issues/1)) ([ef6a47f](https://github.com/Tendulkarx/nexus/commit/ef6a47fb35faf0a1d854de054bfe2e2594b61e94))
