@@ -214,8 +214,8 @@ so a new protocol fails type-checking until it's accepted there.
   (`remote-desktop/`) that hosts the native addon's view.
 - `renderer/connection-manager/` — the connection-profile list/editor UI. `connection-form.tsx` is the New
   Session dialog: a protocol picker, with fields shown only where that protocol uses them (`SSH_BASED`,
-  `HAS_FILES`), and "Save & connect" for new profiles. `session-import-dialog.tsx` imports from a
-  sessions.ini / .mxtsessions via `main/services/session-ini-parser.ts`: the number after the icon is the
+  `HAS_FILES`), and "Save & connect" for new profiles. `session-import-dialog.tsx` imports saved sessions from a
+  session `.ini` or `.mxtsessions` export via `main/services/session-ini-parser.ts`: the number after the icon is the
   session type, and only the documented codes (SSH 0, RDP 4, VNC 5, SFTP 7) are mapped — don't guess others.
 - `renderer/lib/ipc.ts` — typed wrapper around `nexusAPI.ipc.invoke`, used everywhere instead of
   calling `nexusAPI` directly, keyed against `ipc-contract.ts` types.

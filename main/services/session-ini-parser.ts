@@ -1,5 +1,5 @@
 /**
- * Reads saved sessions out of a sessions.ini (or a .mxtsessions export).
+ * Reads saved sessions out of a session .ini file (or a .mxtsessions export).
  *
  * Sessions live in [Bookmarks] and [Bookmarks_N] sections. SubRep= holds the
  * folder path (backslash-separated); every other key is one session:
@@ -44,7 +44,7 @@ function parsePort(value: string | undefined): number | null {
   return Number.isInteger(n) && n > 0 && n <= 65535 ? n : null;
 }
 
-/** Decodes as UTF-8 when the bytes are valid UTF-8, otherwise as Windows-1252/Latin-1 (the other client's usual ANSI save). */
+/** Decodes as UTF-8 when the bytes are valid UTF-8, otherwise as Windows-1252/Latin-1 (the usual ANSI save on Windows). */
 export function decodeIni(bytes: Uint8Array): string {
   try {
     return new TextDecoder("utf-8", { fatal: true }).decode(bytes).replace(/^\uFEFF/, "");

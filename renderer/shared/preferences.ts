@@ -53,7 +53,7 @@ export interface AppPreferences {
     vncShareClipboard: boolean;
   };
   highlight: {
-    /** Colour matching words in terminal output (the other client's "syntax highlighting"). */
+    /** Colour matching words in terminal output (syntax highlighting). */
     enabled: boolean;
     /** Later rules win where two match the same text. */
     rules: HighlightRule[];

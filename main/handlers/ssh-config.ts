@@ -1,6 +1,6 @@
 /**
  * IPC handlers for importing connection-profile candidates from the user's
- * ~/.ssh/config or a sessions.ini. Read-only — actually creating profiles from
+ * ~/.ssh/config or a session .ini export. Read-only — actually creating profiles from
  * the parsed hosts the user selects goes through connections:create.
  */
 import { readFile } from "fs/promises";

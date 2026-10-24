@@ -1089,10 +1089,10 @@ export interface CronWriteRequest {
   expected: string;
 }
 
-// ── session-file import (invoke) ───────────────────────────────────────────────
+// ── Session import (invoke) ─────────────────────────────────────────────────
 
 // sessionImport:parseIni { path } → SessionIniParseResult
-//   Read-only: lists sessions from a sessions.ini or .mxtsessions file; the
+//   Read-only: lists sessions from a session .ini or .mxtsessions file; the
 //   renderer creates the chosen ones through folders:create / connections:create.
 export interface SessionIniParseRequest {
   path: string;
@@ -1104,7 +1104,7 @@ export interface IniSession {
   folderPath: string[];
   /** The Nexus protocol this maps to, or null for a session type Nexus can't open. */
   protocol: "ssh" | "sftp" | "rdp" | "vnc" | null;
-  /** the other client's numeric session type (SSH 0, RDP 4, VNC 5, SFTP 7, …). */
+  /** The numeric session type in the file (SSH 0, RDP 4, VNC 5, SFTP 7, …). */
   typeCode: number;
   host: string;
   port: number | null;

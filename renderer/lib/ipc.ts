@@ -303,7 +303,7 @@ export const ipc = {
     onStatus: (handler: (payload: LocalServerStatus) => void) => on<LocalServerStatus>(IPC.servers.status, handler),
   },
 
-  // sessions.ini import
+  // Session .ini import
   sessionImport: {
     parseIni: (req: SessionIniParseRequest) => invoke<SessionIniParseResult>(IPC.sessionImport.parseIni, req),
   },

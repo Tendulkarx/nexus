@@ -1,11 +1,11 @@
 /**
- * Imports saved sessions from a sessions.ini or .mxtsessions export. Parsing
+ * Imports saved sessions from a session .ini file or .mxtsessions export. Parsing
  * happens on the backend (main/services/session-ini-parser.ts); this dialog
- * recreates the other client's folder tree with folders:create and saves each chosen
+ * recreates the file's folder tree with folders:create and saves each chosen
  * session through connections:create, like the ~/.ssh/config import.
  * Sessions of types Nexus can't open are listed but can't be selected, and
  * sessions that match a saved profile start unticked. Passwords aren't
- * imported: session-file encrypts them, so the first connect asks.
+ * imported: the file stores them encrypted, so the first connect asks.
  */
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -131,7 +131,7 @@ export function SessionImportDialog({ path, onClose }: SessionImportDialogProps)
     onSuccess: (imported) => {
       void qc.invalidateQueries({ queryKey: ["connections"] });
       onClose();
-      toast.success(`Imported ${imported} session${imported === 1 ? "" : "s"} from session-file`);
+      toast.success(`Imported ${imported} session${imported === 1 ? "" : "s"}`);
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -169,12 +169,12 @@ export function SessionImportDialog({ path, onClose }: SessionImportDialogProps)
         </div>
       ) : sessions.length === 0 ? (
         <div className="p-4">
-          <Text color="secondary">No saved sessions found. Choose sessions.ini or a .mxtsessions export.</Text>
+          <Text color="secondary">No saved sessions found. Choose a session .ini file or a .mxtsessions export.</Text>
         </div>
       ) : (
         <div className="flex flex-col">
           <p className="px-4 py-2.5 text-xs text-secondary border-b border-separator">
-            Passwords aren&apos;t imported (session-file encrypts them), so Nexus asks the first time you connect.
+            Passwords aren&apos;t imported (the file stores them encrypted), so Nexus asks the first time you connect.
           </p>
           {sessions.map((s, i) => {
             const key = sessionKey(s, i);

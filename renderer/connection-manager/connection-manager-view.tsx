@@ -271,10 +271,10 @@ export function ConnectionManagerView() {
 
   async function pickImportFile() {
     const result = await window.nexusAPI.dialog.showOpenDialog({
-      title: "Import from session-file",
-      message: "Choose sessions.ini, or a .mxtsessions file exported from session-file",
+      title: "Import Sessions",
+      message: "Choose a session .ini file or a .mxtsessions export",
       properties: ["openFile"],
-      filters: [{ name: "session-file sessions", extensions: ["ini", "mxtsessions"] }],
+      filters: [{ name: "Saved sessions", extensions: ["ini", "mxtsessions"] }],
     });
     const filePath = result.filePaths[0];
     if (!result.canceled && filePath) setImportFile(filePath);
@@ -291,7 +291,7 @@ export function ConnectionManagerView() {
         { label: "New Folder…", commandId: CMD_NEW_FOLDER },
         { type: "separator" },
         { label: "Import from SSH Config…", commandId: CMD_SSH_IMPORT },
-        { label: "Import from session-file…", commandId: CMD_SESSION_IMPORT },
+        { label: "Import Sessions from File…", commandId: CMD_SESSION_IMPORT },
         { type: "separator" },
         { label: "Export Connections…", commandId: CMD_EXPORT },
         { label: "Import Connections…", commandId: CMD_IMPORT },

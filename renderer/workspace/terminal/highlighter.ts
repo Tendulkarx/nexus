@@ -1,6 +1,6 @@
 /**
  * Highlight rules (Settings › Highlighting): colours words like "error" or
- * IP addresses in terminal output, as the other client's syntax highlighting does.
+ * IP addresses in terminal output.
  *
  * Nothing in the byte stream changes. Once a line is finished (the cursor has
  * moved below it), its text is matched against the rules and each match gets

@@ -1,6 +1,6 @@
 /**
  * X11 forwarding to XQuartz, so `xclock`, `virt-manager` and other remote GUI
- * apps open as windows on the Mac (the other client's built-in X server, minus
+ * apps open as windows on the Mac (a built-in X server, minus
  * bundling one). Like `ssh -Y`: the remote side gets XQuartz's real
  * MIT-MAGIC-COOKIE, and every X11 channel the server opens is piped to the
  * local display socket.
