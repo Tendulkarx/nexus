@@ -48,6 +48,12 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      # electron-builder rebuilds node-pty and cpu-features through @electron/rebuild's
+      # node-gyp 9, which imports distutils; Python 3.12 removed it, and macos-latest's
+      # default Python is newer. 3.11 is the last release that still ships it.
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
 
       - name: Install build tools for the RDP add-on
         run: brew install cmake ninja pkg-config openssl@3 uriparser jansson
