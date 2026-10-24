@@ -200,12 +200,12 @@ so a new protocol fails type-checking until it's accepted there.
   `pr-title.yml` requires Conventional Commit PR titles (squash merges make them the commit messages);
   `release.yml` runs release-please (version, CHANGELOG.md, release PR) and, when a release PR merges, packages
   arm64 on macOS (RDP add-on included) and uploads the DMG to the release (plus the updater's zip, blockmaps and latest-mac.yml once signing secrets exist). Don't
-  edit `version` in package.json or CHANGELOG.md by hand; release-please owns them. Signing switches on from
+  edit `version` in package.json or CHANGELOG.md by hand; release-please owns them. The macOS job pins Python 3.11 (`actions/setup-python`): electron-builder rebuilds node-pty and cpu-features with node-gyp 9, which imports `distutils`, gone from Python 3.12 and from macos-latest's default Python. electron-builder 26 should make the pin unnecessary. Signing switches on from
   repo secrets (see docs/releasing.md). Tests must pass on Linux too: keep macOS-only paths out of them.
 - Packaging: `npx electron-vite build && CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --mac dir` makes
   an unsigned `dist/mac-arm64/Nexus.app` for local testing. electron-builder unpacks and rebuilds node-pty itself
   (spawn-helper stays executable). Run it with `--user-data-dir=<scratch>` so it doesn't touch real data.
-  `build.publish` points at Tendulkarx/nexus; auto-update also needs a signed app and a repo the updater can read (it's private).
+  `build.publish` points at Tendulkarx/nexus; auto-update also needs a signed app (the repo is public, so the updater can read its releases).
 - Terminals are always dark: `.terminal-surface` in `styles.css` re-seeds the theme variables for that
   subtree, and `workspace/terminal/terminal-theme.ts` holds the matching ob_dark xterm palette (its
   ANSI white is red-orange on purpose; keep `drawBoldTextInBrightColors: false`).
